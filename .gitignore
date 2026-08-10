@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Datasets
+*.csv
+*.zip
+
+# Kaggle credentials
+kaggle.json
+
+# Environment files
+.env
+venv/
+.venv/
+
+# Model files
+*.pkl
+*.joblib
+
+# OS files
+.DS_Store
+Thumbs.db
