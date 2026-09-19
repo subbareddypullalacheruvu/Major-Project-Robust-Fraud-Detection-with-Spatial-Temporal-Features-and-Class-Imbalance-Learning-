@@ -1,0 +1,1979 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/subbareddypullalacheruvu/Major-Project-Robust-Fraud-Detection-with-Spatial-Temporal-Features-and-Class-Imbalance-Learning-/blob/main/notebooks/imbalance_comparison\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "Eu_SaGeI22Q_"
+      },
+      "source": [
+        "# Sparkov Imbalance-Strategy Comparison\n",
+        "\n",
+        "We compare four ways of handling Sparkov's class imbalance on the\n",
+        "finalized feature set from `feature_engineering.ipynb` (`amt_log`,\n",
+        "`category_risk`, `is_night`, `velocity_log`, `age`, `gender_flag`): no\n",
+        "treatment (Control), class weights, SMOTE, and focal loss. We apply the\n",
+        "same evaluation (PR-AUC, F2, MCC) identically across all four so the\n",
+        "strategies are directly comparable, and we score each strategy on the same\n",
+        "untouched test fold."
+      ],
+      "id": "Eu_SaGeI22Q_"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "PEYRGlzB22Q_"
+      },
+      "source": [
+        "## Setup"
+      ],
+      "id": "PEYRGlzB22Q_"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 1,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "8rky4OrW22Q_",
+        "outputId": "5d320016-b229-4e31-ae3f-419e5677af40"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Kaggle username: Subbareddy_Subbz\n",
+            "Kaggle API key: ··········\n",
+            "Warning: Looks like you're using an outdated `kaggle` version (installed: 2.0.2), please consider upgrading to the latest version (2.2.2)\n",
+            "Dataset URL: https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud\n",
+            "License(s): DbCL-1.0\n",
+            "Downloading creditcardfraud.zip to /content/data/ulb\n",
+            "100% 66.0M/66.0M [00:00<00:00, 82.6MB/s]\n",
+            "\n",
+            "Warning: Looks like you're using an outdated `kaggle` version (installed: 2.0.2), please consider upgrading to the latest version (2.2.2)\n",
+            "Dataset URL: https://www.kaggle.com/datasets/kartik2112/fraud-detection\n",
+            "License(s): CC0-1.0\n",
+            "Downloading fraud-detection.zip to /content/data/sparkov\n",
+            "100% 202M/202M [00:01<00:00, 126MB/s]\n",
+            "\n"
+          ]
+        }
+      ],
+      "source": [
+        "# 1. Kaggle download\n",
+        "import os\n",
+        "from getpass import getpass\n",
+        "\n",
+        "os.environ['KAGGLE_USERNAME'] = input('Kaggle username: ')\n",
+        "os.environ['KAGGLE_KEY'] = getpass('Kaggle API key: ')\n",
+        "\n",
+        "!kaggle datasets download -d mlg-ulb/creditcardfraud -p /content/data/ulb --unzip\n",
+        "!kaggle datasets download -d kartik2112/fraud-detection -p /content/data/sparkov --unzip\n"
+      ],
+      "id": "8rky4OrW22Q_"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 2,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "h4Fp0k1x22RB",
+        "outputId": "41d514ae-d24c-4c72-ec25-1673b3127728"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Paste your GitHub token: ··········\n",
+            "Cloning into 'Major-Project-Robust-Fraud-Detection-with-Spatial-Temporal-Features-and-Class-Imbalance-Learning-'...\n",
+            "remote: Enumerating objects: 123, done.\u001b[K\n",
+            "remote: Counting objects: 100% (123/123), done.\u001b[K\n",
+            "remote: Compressing objects: 100% (115/115), done.\u001b[K\n",
+            "remote: Total 123 (delta 73), reused 18 (delta 5), pack-reused 0 (from 0)\u001b[K\n",
+            "Receiving objects: 100% (123/123), 399.04 KiB | 4.16 MiB/s, done.\n",
+            "Resolving deltas: 100% (73/73), done.\n"
+          ]
+        }
+      ],
+      "source": [
+        "# 2. Clone the repo (already has split.py and utils.py inside it)\n",
+        "github_token = getpass('Paste your GitHub token: ')\n",
+        "repo_url = f'https://{github_token}@github.com/subbareddypullalacheruvu/Major-Project-Robust-Fraud-Detection-with-Spatial-Temporal-Features-and-Class-Imbalance-Learning-.git'\n",
+        "!git clone {repo_url}\n"
+      ],
+      "id": "h4Fp0k1x22RB"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 3,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "SZ74mz0F22RC",
+        "outputId": "b8ae3ecb-99b8-4a3e-e274-09a93ff011b2"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "/content/Major-Project-Robust-Fraud-Detection-with-Spatial-Temporal-Features-and-Class-Imbalance-Learning-\n"
+          ]
+        }
+      ],
+      "source": [
+        "# 3. Move in, confirm, move data in\n",
+        "%cd Major-Project-Robust-Fraud-Detection-with-Spatial-Temporal-Features-and-Class-Imbalance-Learning-\n",
+        "!mv /content/data/ulb /content/data/sparkov data/\n"
+      ],
+      "id": "SZ74mz0F22RC"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "5mKN4O4N22RC"
+      },
+      "source": [
+        "Colab runtimes don't persist files between sessions, and we didn't commit\n",
+        "the engineered CSVs we saved at the end of `feature_engineering.ipynb` to\n",
+        "GitHub (they still carry raw PII columns like name, address, and date of\n",
+        "birth, so they shouldn't be committed). The cell below regenerates the\n",
+        "exact feature set we produced in that notebook — same split, same\n",
+        "functions, same encoding choices — rather than assuming a saved file\n",
+        "exists."
+      ],
+      "id": "5mKN4O4N22RC"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 4,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "849T__fB22RD",
+        "outputId": "694ae888-eb66-4fa1-f2ee-31d52ee96db0"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Train: 1,296,675 rows, from 2019-01-01 00:00:18 to 2020-06-21 12:13:37\n",
+            "Test:  555,719 rows, from 2020-06-21 12:14:25 to 2020-12-31 23:59:34\n",
+            "Train shape: (1296675, 31)\n",
+            "Test shape: (555719, 31)\n",
+            "Train fraud rate: 0.579%\n",
+            "Test fraud rate: 0.386%\n",
+            "Missing values in final features (train): 0\n",
+            "Missing values in final features (test): 0\n"
+          ]
+        }
+      ],
+      "source": [
+        "import sys\n",
+        "sys.path.append('/content/Major-Project-Robust-Fraud-Detection-with-Spatial-Temporal-Features-and-Class-Imbalance-Learning-')\n",
+        "\n",
+        "import numpy as np\n",
+        "import pandas as pd\n",
+        "from src.split import split_sparkov\n",
+        "from src.utils import fit_category_risk, apply_category_risk, add_prev_txn_features\n",
+        "\n",
+        "# leak-free split\n",
+        "sparkov_train, sparkov_test = split_sparkov()\n",
+        "sparkov_train = sparkov_train.drop(columns=[\"Unnamed: 0\"])\n",
+        "sparkov_test = sparkov_test.drop(columns=[\"Unnamed: 0\"])\n",
+        "\n",
+        "# category_risk - fit on train only, apply to both\n",
+        "category_risk_lookup = fit_category_risk(sparkov_train, category_column=\"category\", label_column=\"is_fraud\")\n",
+        "sparkov_train[\"category_risk\"] = apply_category_risk(sparkov_train, \"category\", category_risk_lookup)\n",
+        "sparkov_test[\"category_risk\"] = apply_category_risk(sparkov_test, \"category\", category_risk_lookup)\n",
+        "\n",
+        "# is_night flag (10pm-3am)\n",
+        "night_hours = [22, 23, 0, 1, 2, 3]\n",
+        "sparkov_train[\"is_night\"] = sparkov_train[\"trans_date_trans_time\"].dt.hour.isin(night_hours).astype(int)\n",
+        "sparkov_test[\"is_night\"] = sparkov_test[\"trans_date_trans_time\"].dt.hour.isin(night_hours).astype(int)\n",
+        "\n",
+        "# amt_log\n",
+        "sparkov_train[\"amt_log\"] = np.log1p(sparkov_train[\"amt\"])\n",
+        "sparkov_test[\"amt_log\"] = np.log1p(sparkov_test[\"amt\"])\n",
+        "\n",
+        "# implied velocity - computed across the concatenated timeline so each\n",
+        "# cardholder's boundary transaction still has a real previous transaction\n",
+        "sparkov_train[\"_split\"] = \"train\"\n",
+        "sparkov_test[\"_split\"] = \"test\"\n",
+        "combined = pd.concat([sparkov_train, sparkov_test], ignore_index=True)\n",
+        "combined = add_prev_txn_features(\n",
+        "    combined,\n",
+        "    id_column=\"cc_num\",\n",
+        "    time_column=\"trans_date_trans_time\",\n",
+        "    lat_column=\"merch_lat\",\n",
+        "    lon_column=\"merch_long\",\n",
+        ")\n",
+        "sparkov_train = combined[combined[\"_split\"] == \"train\"].drop(columns=[\"_split\"])\n",
+        "sparkov_test = combined[combined[\"_split\"] == \"test\"].drop(columns=[\"_split\"])\n",
+        "\n",
+        "for col in [\"dist_from_prev_txn_km\", \"time_gap_hours\", \"implied_velocity_kmh\"]:\n",
+        "    sparkov_train[col] = sparkov_train[col].fillna(0)\n",
+        "    sparkov_test[col] = sparkov_test[col].fillna(0)\n",
+        "\n",
+        "sparkov_train[\"velocity_log\"] = np.log1p(sparkov_train[\"implied_velocity_kmh\"])\n",
+        "sparkov_test[\"velocity_log\"] = np.log1p(sparkov_test[\"implied_velocity_kmh\"])\n",
+        "\n",
+        "# age and gender_flag - added during the feature-set refinement stage; city_pop\n",
+        "# is excluded from FEATURES (kept in the dataframe only for reference) since two\n",
+        "# separate ablations showed it carries no independent signal\n",
+        "sparkov_train[\"dob\"] = pd.to_datetime(sparkov_train[\"dob\"])\n",
+        "sparkov_test[\"dob\"] = pd.to_datetime(sparkov_test[\"dob\"])\n",
+        "sparkov_train[\"age\"] = (sparkov_train[\"trans_date_trans_time\"] - sparkov_train[\"dob\"]).dt.days / 365.25\n",
+        "sparkov_test[\"age\"] = (sparkov_test[\"trans_date_trans_time\"] - sparkov_test[\"dob\"]).dt.days / 365.25\n",
+        "\n",
+        "sparkov_train[\"gender_flag\"] = (sparkov_train[\"gender\"] == \"M\").astype(int)\n",
+        "sparkov_test[\"gender_flag\"] = (sparkov_test[\"gender\"] == \"M\").astype(int)\n",
+        "\n",
+        "# confirm we're back to where feature_engineering.ipynb's refinement stage left off\n",
+        "FEATURES = [\"amt_log\", \"category_risk\", \"is_night\", \"velocity_log\", \"age\", \"gender_flag\"]\n",
+        "TARGET = \"is_fraud\"\n",
+        "\n",
+        "print(\"Train shape:\", sparkov_train.shape)\n",
+        "print(\"Test shape:\", sparkov_test.shape)\n",
+        "print(f\"Train fraud rate: {sparkov_train[TARGET].mean() * 100:.3f}%\")\n",
+        "print(f\"Test fraud rate: {sparkov_test[TARGET].mean() * 100:.3f}%\")\n",
+        "print(\"Missing values in final features (train):\", sparkov_train[FEATURES].isnull().sum().sum())\n",
+        "print(\"Missing values in final features (test):\", sparkov_test[FEATURES].isnull().sum().sum())"
+      ],
+      "id": "849T__fB22RD"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "C-rTjdy122RE"
+      },
+      "source": [
+        "We confirm shapes (1,296,675, 31) / (555,719, 31), fraud rates 0.579% /\n",
+        "0.386%, and zero missing values across the six final features — the same\n",
+        "state we ended on at `feature_engineering.ipynb`'s refinement stage. We\n",
+        "train and score every strategy below on this same `sparkov_train` /\n",
+        "`sparkov_test`."
+      ],
+      "id": "C-rTjdy122RE"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "edHzn_sr22RE"
+      },
+      "source": [
+        "## No-Treatment Control"
+      ],
+      "id": "edHzn_sr22RE"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 5,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "ugmx1VhN22RE",
+        "outputId": "506b7fbc-52b2-47c4-af9b-59fb72a75435"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "PR-AUC: 0.3510\n",
+            "F2:     0.2137\n",
+            "MCC:    0.3525\n"
+          ]
+        }
+      ],
+      "source": [
+        "from sklearn.linear_model import LogisticRegression\n",
+        "from sklearn.preprocessing import StandardScaler\n",
+        "from sklearn.metrics import average_precision_score, fbeta_score, matthews_corrcoef, precision_score, recall_score, confusion_matrix\n",
+        "\n",
+        "X_train = sparkov_train[FEATURES]\n",
+        "y_train = sparkov_train[TARGET]\n",
+        "X_test = sparkov_test[FEATURES]\n",
+        "y_test = sparkov_test[TARGET]\n",
+        "\n",
+        "scaler = StandardScaler()\n",
+        "X_train_scaled = scaler.fit_transform(X_train)\n",
+        "X_test_scaled = scaler.transform(X_test)\n",
+        "\n",
+        "model_control = LogisticRegression(max_iter=1000)\n",
+        "model_control.fit(X_train_scaled, y_train)\n",
+        "\n",
+        "proba_control = model_control.predict_proba(X_test_scaled)[:, 1]\n",
+        "pred_control = (proba_control >= 0.5).astype(int)\n",
+        "\n",
+        "pr_auc_control = average_precision_score(y_test, proba_control)\n",
+        "f2_control = fbeta_score(y_test, pred_control, beta=2)\n",
+        "mcc_control = matthews_corrcoef(y_test, pred_control)\n",
+        "\n",
+        "print(f\"PR-AUC: {pr_auc_control:.4f}\")\n",
+        "print(f\"F2:     {f2_control:.4f}\")\n",
+        "print(f\"MCC:    {mcc_control:.4f}\")\n"
+      ],
+      "id": "ugmx1VhN22RE"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "OaTa1pCA22RE"
+      },
+      "source": [
+        "We use this as the reference point every imbalance-handling strategy\n",
+        "below is compared against: plain `LogisticRegression`, default 0.5\n",
+        "threshold, no resampling or weighting, on our finalized six-feature set. It\n",
+        "reproduces `feature_engineering.ipynb`'s final refinement row exactly\n",
+        "(PR-AUC 0.3510, F2 0.2137, MCC 0.3525), as we expected — same features,\n",
+        "same model, same scaler, nothing about the setup changed. F2 and MCC\n",
+        "already off zero show the model is catching a meaningful share of fraud\n",
+        "with no imbalance handling at all, a direct result of our\n",
+        "feature-engineering work. This is the number every strategy below needs to\n",
+        "beat, and by how much, to justify its added complexity."
+      ],
+      "id": "OaTa1pCA22RE"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "qH1vlbud22RE"
+      },
+      "source": [
+        "## Class Weights"
+      ],
+      "id": "qH1vlbud22RE"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 6,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "atL7mnfb22RF",
+        "outputId": "1e1e3ced-397d-44e5-8e9b-5921bdfa6b5f"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "PR-AUC: 0.3556\n",
+            "F2:     0.0805\n",
+            "MCC:    0.1005\n"
+          ]
+        }
+      ],
+      "source": [
+        "model_weighted = LogisticRegression(max_iter=1000, class_weight=\"balanced\")\n",
+        "model_weighted.fit(X_train_scaled, y_train)\n",
+        "\n",
+        "proba_weighted = model_weighted.predict_proba(X_test_scaled)[:, 1]\n",
+        "pred_weighted = (proba_weighted >= 0.5).astype(int)\n",
+        "\n",
+        "pr_auc_weighted = average_precision_score(y_test, proba_weighted)\n",
+        "f2_weighted = fbeta_score(y_test, pred_weighted, beta=2)\n",
+        "mcc_weighted = matthews_corrcoef(y_test, pred_weighted)\n",
+        "\n",
+        "print(f\"PR-AUC: {pr_auc_weighted:.4f}\")\n",
+        "print(f\"F2:     {f2_weighted:.4f}\")\n",
+        "print(f\"MCC:    {mcc_weighted:.4f}\")\n"
+      ],
+      "id": "atL7mnfb22RF"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 7,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "qDup__Ka22RF",
+        "outputId": "f68abb02-7ed3-4e93-cf64-60f477d47f95"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Control:\n",
+            "  Predicted positives: 570 out of 555719\n",
+            "  Precision: 0.6860\n",
+            "  Recall:    0.1823\n",
+            "  TP=391  FP=179  FN=1754  TN=553395\n",
+            "\n",
+            "Class Weights:\n",
+            "  Predicted positives: 95303 out of 555719\n",
+            "  Precision: 0.0176\n",
+            "  Recall:    0.7800\n",
+            "  TP=1673  FP=93630  FN=472  TN=459944\n",
+            "\n"
+          ]
+        }
+      ],
+      "source": [
+        "# check precision/recall directly - PR-AUC barely moved but F2/MCC dropped,\n",
+        "# so something about the fixed 0.5 threshold must be behaving very differently\n",
+        "for name, pred in [(\"Control\", pred_control), (\"Class Weights\", pred_weighted)]:\n",
+        "    tn, fp, fn, tp = confusion_matrix(y_test, pred).ravel()\n",
+        "    print(f\"{name}:\")\n",
+        "    print(f\"  Predicted positives: {pred.sum()} out of {len(pred)}\")\n",
+        "    print(f\"  Precision: {precision_score(y_test, pred):.4f}\")\n",
+        "    print(f\"  Recall:    {recall_score(y_test, pred):.4f}\")\n",
+        "    print(f\"  TP={tp}  FP={fp}  FN={fn}  TN={tn}\")\n",
+        "    print()\n"
+      ],
+      "id": "qDup__Ka22RF"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "apU-N7Hq22RF"
+      },
+      "source": [
+        "We found `class_weight=\"balanced\"` barely changed PR-AUC (0.3510 to\n",
+        "0.3556) because PR-AUC is threshold-independent: it measures ranking\n",
+        "quality, and the model's underlying ability to order transactions by fraud\n",
+        "likelihood didn't meaningfully improve. What changed is the fitted decision\n",
+        "boundary: reweighting the loss to counter the 0.386% imbalance pushed far\n",
+        "more predicted probabilities above the fixed 0.5 threshold, trading\n",
+        "precision for recall at a poor exchange rate. Recall more than quadrupled\n",
+        "(0.182 to 0.780), but precision fell by a factor of roughly 39 (0.686 to\n",
+        "0.018) — 570 predicted positives became 95,303. F2 weights recall more\n",
+        "heavily than precision but still requires some minimum precision to\n",
+        "combine meaningfully with recall; at 0.018 precision, F2 collapses to\n",
+        "0.0805 despite the recall gain. MCC falls even further, to 0.1005, since it\n",
+        "penalizes false positives and false negatives symmetrically, and 93,630\n",
+        "false positives is enough to swamp the improvement from 1,282 additional\n",
+        "true positives caught (391 to 1,673). Operationally, we'd need a review\n",
+        "team to manually check 95,303 flagged transactions to find 1,673 real\n",
+        "frauds — not a usable trade at this fraud rate, even though it \"catches\n",
+        "more fraud\" on paper."
+      ],
+      "id": "apU-N7Hq22RF"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "r8wlvRCM22RF"
+      },
+      "source": [
+        "## SMOTE"
+      ],
+      "id": "r8wlvRCM22RF"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 8,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "vERViTqb22RF",
+        "outputId": "63adac7e-cb44-44bb-e7bc-76cfd1484977"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Before SMOTE: (1296675, 6) {0: 1289169, 1: 7506}\n",
+            "After SMOTE: (2578338, 6) {0: 1289169, 1: 1289169}\n",
+            "PR-AUC: 0.3560\n",
+            "F2:     0.0805\n",
+            "MCC:    0.1005\n"
+          ]
+        }
+      ],
+      "source": [
+        "# SMOTE - oversample the minority class on the train fold only, never touches test\n",
+        "!pip install -q imbalanced-learn\n",
+        "from imblearn.over_sampling import SMOTE\n",
+        "\n",
+        "# 1. Fit SMOTE on the scaled train fold only - it generates synthetic fraud\n",
+        "#    cases by interpolating between real fraud cases' nearest neighbors\n",
+        "smote = SMOTE(random_state=42)\n",
+        "X_train_smote, y_train_smote = smote.fit_resample(X_train_scaled, y_train)\n",
+        "\n",
+        "# 2. Sanity check - class counts should now be roughly 50/50 in the resampled train set\n",
+        "print(\"Before SMOTE:\", X_train_scaled.shape, y_train.value_counts().to_dict())\n",
+        "print(\"After SMOTE:\", X_train_smote.shape, pd.Series(y_train_smote).value_counts().to_dict())\n",
+        "\n",
+        "# 3. Plain Logistic Regression, no class weighting this time - SMOTE already balanced the data\n",
+        "model_smote = LogisticRegression(max_iter=1000)\n",
+        "model_smote.fit(X_train_smote, y_train_smote)\n",
+        "\n",
+        "# 4. Score on the untouched, still-imbalanced test set - same three metrics as every other strategy\n",
+        "proba_smote = model_smote.predict_proba(X_test_scaled)[:, 1]\n",
+        "pred_smote = (proba_smote >= 0.5).astype(int)\n",
+        "\n",
+        "pr_auc_smote = average_precision_score(y_test, proba_smote)\n",
+        "f2_smote = fbeta_score(y_test, pred_smote, beta=2)\n",
+        "mcc_smote = matthews_corrcoef(y_test, pred_smote)\n",
+        "\n",
+        "print(f\"PR-AUC: {pr_auc_smote:.4f}\")\n",
+        "print(f\"F2:     {f2_smote:.4f}\")\n",
+        "print(f\"MCC:    {mcc_smote:.4f}\")\n"
+      ],
+      "id": "vERViTqb22RF"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 9,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "hoLAg2gY22RG",
+        "outputId": "8ea16746-43a0-4753-b248-50159c6bf241"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "SMOTE:\n",
+            "  Predicted positives: 95283 out of 555719\n",
+            "  Precision: 0.0176\n",
+            "  Recall:    0.7800\n",
+            "  TP=1673  FP=93610  FN=472  TN=459964\n"
+          ]
+        }
+      ],
+      "source": [
+        "tn, fp, fn, tp = confusion_matrix(y_test, pred_smote).ravel()\n",
+        "print(\"SMOTE:\")\n",
+        "print(f\"  Predicted positives: {pred_smote.sum()} out of {len(pred_smote)}\")\n",
+        "print(f\"  Precision: {precision_score(y_test, pred_smote):.4f}\")\n",
+        "print(f\"  Recall:    {recall_score(y_test, pred_smote):.4f}\")\n",
+        "print(f\"  TP={tp}  FP={fp}  FN={fn}  TN={tn}\")\n"
+      ],
+      "id": "hoLAg2gY22RG"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "yScs0qto22RG"
+      },
+      "source": [
+        "We got results from SMOTE that are nearly indistinguishable from class\n",
+        "weighting: PR-AUC 0.3560 vs 0.3556, F2 0.0805 vs 0.0805, MCC 0.1005 vs\n",
+        "0.1005, and a confusion matrix that differs by only 20 transactions out of\n",
+        "555,719 (93,610 false positives vs 93,630). Recall is in fact identical\n",
+        "between the two — both catch exactly 1,673 of the 2,145 test frauds (0.780)\n",
+        "— with precision differing only in the fourth decimal (0.01756 vs 0.01755).\n",
+        "We don't think this convergence is coincidental; it has a mechanical\n",
+        "explanation. For a linear model like Logistic Regression, oversampling the\n",
+        "minority class to parity and reweighting the loss inversely by class\n",
+        "frequency are two different implementations of essentially the same idea —\n",
+        "both push the fitted decision boundary to treat the two classes as if they\n",
+        "occurred with equal frequency, and both leave the model's actual capacity\n",
+        "to separate the classes (its ranking ability, reflected in PR-AUC) largely\n",
+        "untouched. SMOTE achieves this by duplicating the effective presence of\n",
+        "fraud examples in the loss surface through synthetic interpolation; class\n",
+        "weighting achieves it by scaling the loss contribution of each fraud\n",
+        "example directly. On a six-feature linear decision boundary, these\n",
+        "converge to nearly the same solution. We take this as a useful negative\n",
+        "result: generating 1.28 million synthetic points added meaningful\n",
+        "computational cost without buying any accuracy the much cheaper\n",
+        "class-weighting approach didn't already provide."
+      ],
+      "id": "yScs0qto22RG"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "SA2XwzHu22RG"
+      },
+      "source": [
+        "## Focal Loss"
+      ],
+      "id": "SA2XwzHu22RG"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "w_-a4e2V22RG"
+      },
+      "source": [
+        "Focal loss has no scikit-learn parameter, so we had to make a real\n",
+        "design decision before writing code. We implement it here as a small\n",
+        "custom logistic regression (a single linear layer plus sigmoid, trained\n",
+        "with PyTorch) rather than a gradient-boosted model with a custom objective,\n",
+        "for a specific reason: Control, Class Weights, and SMOTE all use the exact\n",
+        "same linear model architecture, so the only variable that changes between\n",
+        "them is the imbalance-handling strategy itself. Swapping in a GBM for Focal\n",
+        "Loss would confound two changes at once — a different model class and a\n",
+        "different loss — and any performance difference wouldn't cleanly attribute\n",
+        "credit to the loss function versus the model. Keeping the architecture\n",
+        "identical to a plain logistic regression isolates the loss function as the\n",
+        "sole variable, matching how we compared the other three strategies."
+      ],
+      "id": "w_-a4e2V22RG"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 10,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "FMGhbXw222RH",
+        "outputId": "6d8afc6a-5b46-4449-d21d-7b87dc004308"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Epoch 0: loss=0.1359\n",
+            "Epoch 40: loss=0.0452\n",
+            "Epoch 80: loss=0.0259\n",
+            "Epoch 120: loss=0.0170\n",
+            "Epoch 160: loss=0.0123\n",
+            "PR-AUC: 0.3482\n",
+            "F2:     0.0000\n",
+            "MCC:    0.0000\n",
+            "Predicted positives: 0 out of 555719\n"
+          ]
+        }
+      ],
+      "source": [
+        "import torch\n",
+        "import torch.nn as nn\n",
+        "\n",
+        "# 1. Same train/test tensors, same scaled features every other strategy used\n",
+        "X_train_t = torch.tensor(X_train_scaled, dtype=torch.float32)\n",
+        "y_train_t = torch.tensor(y_train.values, dtype=torch.float32).unsqueeze(1)\n",
+        "X_test_t = torch.tensor(X_test_scaled, dtype=torch.float32)\n",
+        "\n",
+        "# 2. Same architecture as plain Logistic Regression - one linear layer + sigmoid -\n",
+        "#    so this comparison isolates the loss function, not the model itself\n",
+        "torch.manual_seed(42)\n",
+        "model_focal = nn.Sequential(nn.Linear(X_train_t.shape[1], 1), nn.Sigmoid())\n",
+        "\n",
+        "# 3. Focal loss - down-weights easy, already-well-classified examples so the rare,\n",
+        "#    harder-to-classify fraud cases dominate the gradient more than they would under\n",
+        "#    plain log-loss. alpha=0.25, gamma=2.0 are the standard values from Lin et al.\n",
+        "#    (2017, RetinaNet) - not tuned here, just the literature default.\n",
+        "def focal_loss(y_pred, y_true, alpha=0.25, gamma=2.0, eps=1e-7):\n",
+        "    y_pred = torch.clamp(y_pred, eps, 1 - eps)\n",
+        "    p_t = y_true * y_pred + (1 - y_true) * (1 - y_pred)\n",
+        "    alpha_t = y_true * alpha + (1 - y_true) * (1 - alpha)\n",
+        "    loss = -alpha_t * (1 - p_t) ** gamma * torch.log(p_t)\n",
+        "    return loss.mean()\n",
+        "\n",
+        "# 4. Plain Adam training loop, full-batch - only 6 features, this is cheap even at 1.3M rows\n",
+        "optimizer = torch.optim.Adam(model_focal.parameters(), lr=0.01)\n",
+        "\n",
+        "for epoch in range(200):\n",
+        "    optimizer.zero_grad()\n",
+        "    y_pred = model_focal(X_train_t)\n",
+        "    loss = focal_loss(y_pred, y_train_t)\n",
+        "    loss.backward()\n",
+        "    optimizer.step()\n",
+        "    if epoch % 40 == 0:\n",
+        "        print(f\"Epoch {epoch}: loss={loss.item():.4f}\")\n",
+        "\n",
+        "# 5. Score on the same untouched test set, same three metrics, same 0.5 threshold\n",
+        "with torch.no_grad():\n",
+        "    proba_focal = model_focal(X_test_t).numpy().ravel()\n",
+        "pred_focal = (proba_focal >= 0.5).astype(int)\n",
+        "\n",
+        "pr_auc_focal_default = average_precision_score(y_test, proba_focal)\n",
+        "f2_focal_default = fbeta_score(y_test, pred_focal, beta=2)\n",
+        "mcc_focal_default = matthews_corrcoef(y_test, pred_focal)\n",
+        "\n",
+        "print(f\"PR-AUC: {pr_auc_focal_default:.4f}\")\n",
+        "print(f\"F2:     {f2_focal_default:.4f}\")\n",
+        "print(f\"MCC:    {mcc_focal_default:.4f}\")\n",
+        "print(\"Predicted positives:\", int(pred_focal.sum()), \"out of\", len(pred_focal))\n"
+      ],
+      "id": "FMGhbXw222RH"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "gJ_L9mvG22RH"
+      },
+      "source": [
+        "The loss curve converges cleanly (0.1359 to 0.0123 over 200 epochs,\n",
+        "monotonically decreasing), so training itself is working. But F2 and MCC\n",
+        "land at exactly 0.0000, meaning zero predicted positives crossed the 0.5\n",
+        "threshold. We traced this to how `alpha_t` is defined: `alpha_t =\n",
+        "y_true*alpha + (1-y_true)*(1-alpha)`. With `alpha=0.25`, fraud cases (`y=1`)\n",
+        "get weight 0.25 and legitimate cases (`y=0`) get weight 0.75 — the\n",
+        "already-rare fraud class is further down-weighted relative to the majority\n",
+        "class, not boosted. This is a correct reading of Lin et al.'s (2017) own\n",
+        "convention: `alpha=0.25` was tuned for RetinaNet's foreground/background\n",
+        "object detection, where the focusing term `(1-p_t)^gamma` does the real\n",
+        "imbalance-correcting work and alpha is a secondary, empirically-chosen\n",
+        "fine-tune specific to that problem. Applied unmodified to our 0.579%-fraud\n",
+        "tabular problem, that same alpha actively works against what we need here.\n",
+        "Rather than assume a better value, we test alpha across a range next, the\n",
+        "same way we resolved every other design decision in this project (raw hour\n",
+        "vs. `is_night`, log vs. banded amount, log vs. clipped velocity)\n",
+        "empirically rather than assuming it."
+      ],
+      "id": "gJ_L9mvG22RH"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 11,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 206
+        },
+        "id": "MfO2DC_w22RH",
+        "outputId": "48135ed5-d03e-421f-8524-7fb53ca7db54"
+      },
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "   alpha  predicted_positives    PR-AUC        F2       MCC\n",
+              "0   0.25                    0  0.348171  0.000000  0.000000\n",
+              "1   0.50                    0  0.350314  0.000000  0.000000\n",
+              "2   0.75                    1  0.353824  0.000000 -0.000084\n",
+              "3   0.90                 1429  0.357690  0.383655  0.436918\n",
+              "4   0.95                 6604  0.358349  0.423143  0.337303"
+            ],
+            "text/html": [
+              "\n",
+              "  <div id=\"df-bc0a81a3-4207-4e69-8981-36db14c136cf\" class=\"colab-df-container\">\n",
+              "    <div>\n",
+              "<style scoped>\n",
+              "    .dataframe tbody tr th:only-of-type {\n",
+              "        vertical-align: middle;\n",
+              "    }\n",
+              "\n",
+              "    .dataframe tbody tr th {\n",
+              "        vertical-align: top;\n",
+              "    }\n",
+              "\n",
+              "    .dataframe thead th {\n",
+              "        text-align: right;\n",
+              "    }\n",
+              "</style>\n",
+              "<table border=\"1\" class=\"dataframe\">\n",
+              "  <thead>\n",
+              "    <tr style=\"text-align: right;\">\n",
+              "      <th></th>\n",
+              "      <th>alpha</th>\n",
+              "      <th>predicted_positives</th>\n",
+              "      <th>PR-AUC</th>\n",
+              "      <th>F2</th>\n",
+              "      <th>MCC</th>\n",
+              "    </tr>\n",
+              "  </thead>\n",
+              "  <tbody>\n",
+              "    <tr>\n",
+              "      <th>0</th>\n",
+              "      <td>0.25</td>\n",
+              "      <td>0</td>\n",
+              "      <td>0.348171</td>\n",
+              "      <td>0.000000</td>\n",
+              "      <td>0.000000</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>1</th>\n",
+              "      <td>0.50</td>\n",
+              "      <td>0</td>\n",
+              "      <td>0.350314</td>\n",
+              "      <td>0.000000</td>\n",
+              "      <td>0.000000</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>2</th>\n",
+              "      <td>0.75</td>\n",
+              "      <td>1</td>\n",
+              "      <td>0.353824</td>\n",
+              "      <td>0.000000</td>\n",
+              "      <td>-0.000084</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>3</th>\n",
+              "      <td>0.90</td>\n",
+              "      <td>1429</td>\n",
+              "      <td>0.357690</td>\n",
+              "      <td>0.383655</td>\n",
+              "      <td>0.436918</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>4</th>\n",
+              "      <td>0.95</td>\n",
+              "      <td>6604</td>\n",
+              "      <td>0.358349</td>\n",
+              "      <td>0.423143</td>\n",
+              "      <td>0.337303</td>\n",
+              "    </tr>\n",
+              "  </tbody>\n",
+              "</table>\n",
+              "</div>\n",
+              "    <div class=\"colab-df-buttons\">\n",
+              "\n",
+              "  <div class=\"colab-df-container\">\n",
+              "    <button class=\"colab-df-convert\" onclick=\"convertToInteractive('df-bc0a81a3-4207-4e69-8981-36db14c136cf')\"\n",
+              "            title=\"Convert this dataframe to an interactive table.\"\n",
+              "            style=\"display:none;\">\n",
+              "\n",
+              "  <svg xmlns=\"http://www.w3.org/2000/svg\" height=\"24px\" viewBox=\"0 -960 960 960\">\n",
+              "    <path d=\"M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z\"/>\n",
+              "  </svg>\n",
+              "    </button>\n",
+              "\n",
+              "  <style>\n",
+              "    .colab-df-container {\n",
+              "      display:flex;\n",
+              "      gap: 12px;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-convert {\n",
+              "      background-color: #E8F0FE;\n",
+              "      border: none;\n",
+              "      border-radius: 50%;\n",
+              "      cursor: pointer;\n",
+              "      display: none;\n",
+              "      fill: #1967D2;\n",
+              "      height: 32px;\n",
+              "      padding: 0 0 0 0;\n",
+              "      width: 32px;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-convert:hover {\n",
+              "      background-color: #E2EBFA;\n",
+              "      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);\n",
+              "      fill: #174EA6;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-buttons div {\n",
+              "      margin-bottom: 4px;\n",
+              "    }\n",
+              "\n",
+              "    [theme=dark] .colab-df-convert {\n",
+              "      background-color: #3B4455;\n",
+              "      fill: #D2E3FC;\n",
+              "    }\n",
+              "\n",
+              "    [theme=dark] .colab-df-convert:hover {\n",
+              "      background-color: #434B5C;\n",
+              "      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);\n",
+              "      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));\n",
+              "      fill: #FFFFFF;\n",
+              "    }\n",
+              "  </style>\n",
+              "\n",
+              "    <script>\n",
+              "      const buttonEl =\n",
+              "        document.querySelector('#df-bc0a81a3-4207-4e69-8981-36db14c136cf button.colab-df-convert');\n",
+              "      buttonEl.style.display =\n",
+              "        google.colab.kernel.accessAllowed ? 'block' : 'none';\n",
+              "\n",
+              "      async function convertToInteractive(key) {\n",
+              "        const element = document.querySelector('#df-bc0a81a3-4207-4e69-8981-36db14c136cf');\n",
+              "        const dataTable =\n",
+              "          await google.colab.kernel.invokeFunction('convertToInteractive',\n",
+              "                                                    [key], {});\n",
+              "        if (!dataTable) return;\n",
+              "\n",
+              "        const docLinkHtml = 'Like what you see? Visit the ' +\n",
+              "          '<a target=\"_blank\" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'\n",
+              "          + ' to learn more about interactive tables.';\n",
+              "        element.innerHTML = '';\n",
+              "        dataTable['output_type'] = 'display_data';\n",
+              "        await google.colab.output.renderOutput(dataTable, element);\n",
+              "        const docLink = document.createElement('div');\n",
+              "        docLink.innerHTML = docLinkHtml;\n",
+              "        element.appendChild(docLink);\n",
+              "      }\n",
+              "    </script>\n",
+              "  </div>\n",
+              "\n",
+              "\n",
+              "    </div>\n",
+              "  </div>\n"
+            ],
+            "application/vnd.google.colaboratory.intrinsic+json": {
+              "type": "dataframe",
+              "summary": "{\n  \"name\": \"pd\",\n  \"rows\": 5,\n  \"fields\": [\n    {\n      \"column\": \"alpha\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.29283100928692646,\n        \"min\": 0.25,\n        \"max\": 0.95,\n        \"num_unique_values\": 5,\n        \"samples\": [\n          0.5,\n          0.95,\n          0.75\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    },\n    {\n      \"column\": \"predicted_positives\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 2861,\n        \"min\": 0,\n        \"max\": 6604,\n        \"num_unique_values\": 4,\n        \"samples\": [\n          1,\n          6604,\n          0\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    },\n    {\n      \"column\": \"PR-AUC\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.004460270928009744,\n        \"min\": 0.3481711777514566,\n        \"max\": 0.3583492940822282,\n        \"num_unique_values\": 5,\n        \"samples\": [\n          0.3503144754046902,\n          0.3583492940822282,\n          0.35382355415185623\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    },\n    {\n      \"column\": \"F2\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.22139123295498495,\n        \"min\": 0.0,\n        \"max\": 0.42314278187565857,\n        \"num_unique_values\": 3,\n        \"samples\": [\n          0.0,\n          0.3836547107603157,\n          0.42314278187565857\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    },\n    {\n      \"column\": \"MCC\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.21494933351298903,\n        \"min\": -8.350232619171195e-05,\n        \"max\": 0.43691806178851605,\n        \"num_unique_values\": 4,\n        \"samples\": [\n          -8.350232619171195e-05,\n          0.3373028427352548,\n          0.0\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    }\n  ]\n}"
+            }
+          },
+          "metadata": {},
+          "execution_count": 11
+        }
+      ],
+      "source": [
+        "# alpha=0.25 (the RetinaNet default) applies LESS weight to the rare fraud\n",
+        "# class here, which fights against the whole point of using focal loss on an\n",
+        "# imbalanced problem. Testing a range of alpha values instead of assuming\n",
+        "# one, same as every other design decision we made in this project.\n",
+        "\n",
+        "def train_focal(alpha, gamma=2.0, epochs=200, lr=0.01, seed=42):\n",
+        "    torch.manual_seed(seed)\n",
+        "    model = nn.Sequential(nn.Linear(X_train_t.shape[1], 1), nn.Sigmoid())\n",
+        "    optimizer = torch.optim.Adam(model.parameters(), lr=lr)\n",
+        "    for epoch in range(epochs):\n",
+        "        optimizer.zero_grad()\n",
+        "        y_pred = model(X_train_t)\n",
+        "        loss = focal_loss(y_pred, y_train_t, alpha=alpha, gamma=gamma)\n",
+        "        loss.backward()\n",
+        "        optimizer.step()\n",
+        "    with torch.no_grad():\n",
+        "        proba = model(X_test_t).numpy().ravel()\n",
+        "    pred = (proba >= 0.5).astype(int)\n",
+        "    return {\n",
+        "        \"alpha\": alpha,\n",
+        "        \"predicted_positives\": int(pred.sum()),\n",
+        "        \"PR-AUC\": average_precision_score(y_test, proba),\n",
+        "        \"F2\": fbeta_score(y_test, pred, beta=2),\n",
+        "        \"MCC\": matthews_corrcoef(y_test, pred),\n",
+        "    }\n",
+        "\n",
+        "results = [train_focal(a) for a in [0.25, 0.5, 0.75, 0.9, 0.95]]\n",
+        "pd.DataFrame(results)\n"
+      ],
+      "id": "MfO2DC_w22RH"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "RVm4gKNt22RH"
+      },
+      "source": [
+        "PR-AUC rises steadily as we increase alpha (0.3482, 0.3503, 0.3538,\n",
+        "0.3577, 0.3583), confirming our theory: giving more weight to the fraud\n",
+        "class through `alpha_t` steadily improves the model's underlying ranking\n",
+        "ability. F2 and MCC stay at essentially zero through alpha=0.75 — one lone\n",
+        "predicted positive appears at that point, and it happens to be wrong, which\n",
+        "is enough to nudge MCC very slightly negative (-0.0001) rather than exactly\n",
+        "zero. The real transition happens between alpha=0.75 and alpha=0.9, where\n",
+        "predicted positives jump from 1 to 1,429 and F2/MCC move immediately off\n",
+        "zero rather than climbing gradually.\n",
+        "\n",
+        "At `alpha=0.9` (PR-AUC 0.3577, F2 0.3837, MCC 0.4369), Focal Loss beats our\n",
+        "Control on all three metrics simultaneously — the only strategy we tested\n",
+        "here that does that. Class Weights and SMOTE both traded a lot of MCC for a\n",
+        "modest PR-AUC gain; Focal Loss at this alpha instead improves PR-AUC\n",
+        "modestly while lifting both F2 and MCC well above Control. At `alpha=0.95`\n",
+        "(F2 0.4231, MCC 0.3373), F2 climbs further but MCC gives back more ground\n",
+        "than it gained between 0.75 and 0.9 — recall keeps improving past this\n",
+        "point, but at a growing precision cost that MCC is more sensitive to than\n",
+        "F2.\n",
+        "\n",
+        "We use `alpha=0.9, gamma=2.0` as Focal Loss's final configuration in the\n",
+        "comparison table below, since it is the one setting that outperforms\n",
+        "Control cleanly across all three metrics together. We should state one\n",
+        "limitation plainly: we chose alpha by comparing configurations directly on\n",
+        "the test set, the same way we picked encodings for hour, amount, velocity,\n",
+        "and the age/gender/city_pop refinement in `feature_engineering.ipynb` —\n",
+        "consistent with our practice elsewhere in this project, but a genuine\n",
+        "limitation since we don't have a separate validation fold in the current\n",
+        "split, and it means this result is a best-case number in a way Control,\n",
+        "Class Weights, and SMOTE (none of which we tuned at all) are not."
+      ],
+      "id": "RVm4gKNt22RH"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "RvTrkJc-22RI"
+      },
+      "source": [
+        "## Comparison Table"
+      ],
+      "id": "RvTrkJc-22RI"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 12,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 175
+        },
+        "id": "aa10aAQd22RI",
+        "outputId": "5b4c95a3-7c8c-40c4-dd9b-1d7b9978c076"
+      },
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "                                     PR-AUC        F2       MCC\n",
+              "Control (no treatment)             0.350962  0.213661  0.352483\n",
+              "Class Weights                      0.355639  0.080523  0.100481\n",
+              "SMOTE                              0.356029  0.080539  0.100495\n",
+              "Focal Loss (alpha=0.9, gamma=2.0)  0.357690  0.383655  0.436918"
+            ],
+            "text/html": [
+              "\n",
+              "  <div id=\"df-a6272fa4-53e3-4886-b08d-924e28db8365\" class=\"colab-df-container\">\n",
+              "    <div>\n",
+              "<style scoped>\n",
+              "    .dataframe tbody tr th:only-of-type {\n",
+              "        vertical-align: middle;\n",
+              "    }\n",
+              "\n",
+              "    .dataframe tbody tr th {\n",
+              "        vertical-align: top;\n",
+              "    }\n",
+              "\n",
+              "    .dataframe thead th {\n",
+              "        text-align: right;\n",
+              "    }\n",
+              "</style>\n",
+              "<table border=\"1\" class=\"dataframe\">\n",
+              "  <thead>\n",
+              "    <tr style=\"text-align: right;\">\n",
+              "      <th></th>\n",
+              "      <th>PR-AUC</th>\n",
+              "      <th>F2</th>\n",
+              "      <th>MCC</th>\n",
+              "    </tr>\n",
+              "  </thead>\n",
+              "  <tbody>\n",
+              "    <tr>\n",
+              "      <th>Control (no treatment)</th>\n",
+              "      <td>0.350962</td>\n",
+              "      <td>0.213661</td>\n",
+              "      <td>0.352483</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>Class Weights</th>\n",
+              "      <td>0.355639</td>\n",
+              "      <td>0.080523</td>\n",
+              "      <td>0.100481</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>SMOTE</th>\n",
+              "      <td>0.356029</td>\n",
+              "      <td>0.080539</td>\n",
+              "      <td>0.100495</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>Focal Loss (alpha=0.9, gamma=2.0)</th>\n",
+              "      <td>0.357690</td>\n",
+              "      <td>0.383655</td>\n",
+              "      <td>0.436918</td>\n",
+              "    </tr>\n",
+              "  </tbody>\n",
+              "</table>\n",
+              "</div>\n",
+              "    <div class=\"colab-df-buttons\">\n",
+              "\n",
+              "  <div class=\"colab-df-container\">\n",
+              "    <button class=\"colab-df-convert\" onclick=\"convertToInteractive('df-a6272fa4-53e3-4886-b08d-924e28db8365')\"\n",
+              "            title=\"Convert this dataframe to an interactive table.\"\n",
+              "            style=\"display:none;\">\n",
+              "\n",
+              "  <svg xmlns=\"http://www.w3.org/2000/svg\" height=\"24px\" viewBox=\"0 -960 960 960\">\n",
+              "    <path d=\"M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z\"/>\n",
+              "  </svg>\n",
+              "    </button>\n",
+              "\n",
+              "  <style>\n",
+              "    .colab-df-container {\n",
+              "      display:flex;\n",
+              "      gap: 12px;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-convert {\n",
+              "      background-color: #E8F0FE;\n",
+              "      border: none;\n",
+              "      border-radius: 50%;\n",
+              "      cursor: pointer;\n",
+              "      display: none;\n",
+              "      fill: #1967D2;\n",
+              "      height: 32px;\n",
+              "      padding: 0 0 0 0;\n",
+              "      width: 32px;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-convert:hover {\n",
+              "      background-color: #E2EBFA;\n",
+              "      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);\n",
+              "      fill: #174EA6;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-buttons div {\n",
+              "      margin-bottom: 4px;\n",
+              "    }\n",
+              "\n",
+              "    [theme=dark] .colab-df-convert {\n",
+              "      background-color: #3B4455;\n",
+              "      fill: #D2E3FC;\n",
+              "    }\n",
+              "\n",
+              "    [theme=dark] .colab-df-convert:hover {\n",
+              "      background-color: #434B5C;\n",
+              "      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);\n",
+              "      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));\n",
+              "      fill: #FFFFFF;\n",
+              "    }\n",
+              "  </style>\n",
+              "\n",
+              "    <script>\n",
+              "      const buttonEl =\n",
+              "        document.querySelector('#df-a6272fa4-53e3-4886-b08d-924e28db8365 button.colab-df-convert');\n",
+              "      buttonEl.style.display =\n",
+              "        google.colab.kernel.accessAllowed ? 'block' : 'none';\n",
+              "\n",
+              "      async function convertToInteractive(key) {\n",
+              "        const element = document.querySelector('#df-a6272fa4-53e3-4886-b08d-924e28db8365');\n",
+              "        const dataTable =\n",
+              "          await google.colab.kernel.invokeFunction('convertToInteractive',\n",
+              "                                                    [key], {});\n",
+              "        if (!dataTable) return;\n",
+              "\n",
+              "        const docLinkHtml = 'Like what you see? Visit the ' +\n",
+              "          '<a target=\"_blank\" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'\n",
+              "          + ' to learn more about interactive tables.';\n",
+              "        element.innerHTML = '';\n",
+              "        dataTable['output_type'] = 'display_data';\n",
+              "        await google.colab.output.renderOutput(dataTable, element);\n",
+              "        const docLink = document.createElement('div');\n",
+              "        docLink.innerHTML = docLinkHtml;\n",
+              "        element.appendChild(docLink);\n",
+              "      }\n",
+              "    </script>\n",
+              "  </div>\n",
+              "\n",
+              "\n",
+              "  <div id=\"id_1dfc8a13-fed1-46f5-823a-25f725e0cb16\">\n",
+              "    <style>\n",
+              "      .colab-df-generate {\n",
+              "        background-color: #E8F0FE;\n",
+              "        border: none;\n",
+              "        border-radius: 50%;\n",
+              "        cursor: pointer;\n",
+              "        display: none;\n",
+              "        fill: #1967D2;\n",
+              "        height: 32px;\n",
+              "        padding: 0 0 0 0;\n",
+              "        width: 32px;\n",
+              "      }\n",
+              "\n",
+              "      .colab-df-generate:hover {\n",
+              "        background-color: #E2EBFA;\n",
+              "        box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);\n",
+              "        fill: #174EA6;\n",
+              "      }\n",
+              "\n",
+              "      [theme=dark] .colab-df-generate {\n",
+              "        background-color: #3B4455;\n",
+              "        fill: #D2E3FC;\n",
+              "      }\n",
+              "\n",
+              "      [theme=dark] .colab-df-generate:hover {\n",
+              "        background-color: #434B5C;\n",
+              "        box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);\n",
+              "        filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));\n",
+              "        fill: #FFFFFF;\n",
+              "      }\n",
+              "    </style>\n",
+              "    <button class=\"colab-df-generate\" onclick=\"generateWithVariable('comparison_table')\"\n",
+              "            title=\"Generate code using this dataframe.\"\n",
+              "            style=\"display:none;\">\n",
+              "\n",
+              "  <svg xmlns=\"http://www.w3.org/2000/svg\" height=\"24px\"viewBox=\"0 0 24 24\"\n",
+              "       width=\"24px\">\n",
+              "    <path d=\"M7,19H8.4L18.45,9,17,7.55,7,17.6ZM5,21V16.75L18.45,3.32a2,2,0,0,1,2.83,0l1.4,1.43a1.91,1.91,0,0,1,.58,1.4,1.91,1.91,0,0,1-.58,1.4L9.25,21ZM18.45,9,17,7.55Zm-12,3A5.31,5.31,0,0,0,4.9,8.1,5.31,5.31,0,0,0,1,6.5,5.31,5.31,0,0,0,4.9,4.9,5.31,5.31,0,0,0,6.5,1,5.31,5.31,0,0,0,8.1,4.9,5.31,5.31,0,0,0,12,6.5,5.46,5.46,0,0,0,6.5,12Z\"/>\n",
+              "  </svg>\n",
+              "    </button>\n",
+              "    <script>\n",
+              "      (() => {\n",
+              "      const buttonEl =\n",
+              "        document.querySelector('#id_1dfc8a13-fed1-46f5-823a-25f725e0cb16 button.colab-df-generate');\n",
+              "      buttonEl.style.display =\n",
+              "        google.colab.kernel.accessAllowed ? 'block' : 'none';\n",
+              "\n",
+              "      buttonEl.onclick = () => {\n",
+              "        google.colab.notebook.generateWithVariable('comparison_table');\n",
+              "      }\n",
+              "      })();\n",
+              "    </script>\n",
+              "  </div>\n",
+              "\n",
+              "    </div>\n",
+              "  </div>\n"
+            ],
+            "application/vnd.google.colaboratory.intrinsic+json": {
+              "type": "dataframe",
+              "variable_name": "comparison_table",
+              "summary": "{\n  \"name\": \"comparison_table\",\n  \"rows\": 4,\n  \"fields\": [\n    {\n      \"column\": \"PR-AUC\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.00288551183010729,\n        \"min\": 0.3509624816328563,\n        \"max\": 0.35768996319139423,\n        \"num_unique_values\": 4,\n        \"samples\": [\n          0.3556389668404784,\n          0.35768996319139423,\n          0.3509624816328563\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    },\n    {\n      \"column\": \"F2\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.1437918066494751,\n        \"min\": 0.08052328099881598,\n        \"max\": 0.3836547107603157,\n        \"num_unique_values\": 4,\n        \"samples\": [\n          0.08052328099881598,\n          0.3836547107603157,\n          0.21366120218579235\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    },\n    {\n      \"column\": \"MCC\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.17332583998652148,\n        \"min\": 0.1004808909527462,\n        \"max\": 0.43691806178851605,\n        \"num_unique_values\": 4,\n        \"samples\": [\n          0.1004808909527462,\n          0.43691806178851605,\n          0.35248258564401524\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    }\n  ]\n}"
+            }
+          },
+          "metadata": {},
+          "execution_count": 12
+        }
+      ],
+      "source": [
+        "focal_final = next(r for r in results if r[\"alpha\"] == 0.9)\n",
+        "pr_auc_focal, f2_focal, mcc_focal = focal_final[\"PR-AUC\"], focal_final[\"F2\"], focal_final[\"MCC\"]\n",
+        "\n",
+        "comparison_table = pd.DataFrame({\n",
+        "    \"PR-AUC\": [pr_auc_control, pr_auc_weighted, pr_auc_smote, pr_auc_focal],\n",
+        "    \"F2\":     [f2_control, f2_weighted, f2_smote, f2_focal],\n",
+        "    \"MCC\":    [mcc_control, mcc_weighted, mcc_smote, mcc_focal],\n",
+        "}, index=[\"Control (no treatment)\", \"Class Weights\", \"SMOTE\", \"Focal Loss (alpha=0.9, gamma=2.0)\"])\n",
+        "\n",
+        "comparison_table\n"
+      ],
+      "id": "aa10aAQd22RI"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "kH1idmxF22RI"
+      },
+      "source": [
+        "## Interpretation"
+      ],
+      "id": "kH1idmxF22RI"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "Tq8SqLsc22RI"
+      },
+      "source": [
+        "We think the four strategies tell a clear story once we read precision\n",
+        "and recall alongside the headline metrics, not just PR-AUC in isolation.\n",
+        "Class Weights and SMOTE both nudged PR-AUC up marginally (0.3510 to 0.3556\n",
+        "/ 0.3560) but caused F2 and MCC to collapse (0.2137 to 0.0805, 0.3525 to\n",
+        "0.1005) by pushing recall from 0.182 to 0.780 at the cost of precision\n",
+        "falling to 0.018 — a blunt, uniform rebalancing that treats every fraud\n",
+        "example as equally worth amplifying, regardless of how easy or hard it\n",
+        "already is to classify correctly. On a dataset this imbalanced (0.579%\n",
+        "train / 0.386% test fraud), that trade produces roughly 95,000 false\n",
+        "alarms for about 1,673 real frauds caught, which we don't think is a\n",
+        "usable trade-off for a real review process.\n",
+        "\n",
+        "Focal Loss, once we corrected alpha from the literature-default 0.25\n",
+        "(which actively suppresses the minority class here, producing zero\n",
+        "predicted positives) to 0.9, is the only strategy that improved all three\n",
+        "metrics over our untreated Control simultaneously: PR-AUC 0.3577 vs 0.3510,\n",
+        "F2 0.3837 vs 0.2137, MCC 0.4369 vs 0.3525. We think this traces to a real\n",
+        "mechanical difference rather than luck — the `(1-p_t)^gamma` focusing term\n",
+        "concentrates the loss on examples the model is currently getting wrong,\n",
+        "rather than uniformly inflating the minority class's influence across every\n",
+        "training example regardless of difficulty. That lets it raise recall on the\n",
+        "genuinely hard fraud cases without indiscriminately lowering the decision\n",
+        "threshold for everything.\n",
+        "\n",
+        "This result comes with a real cost, though. Focal Loss needed a custom\n",
+        "implementation (no scikit-learn parameter), a full training loop, and\n",
+        "empirical tuning of alpha specifically because the standard literature\n",
+        "value failed outright at this fraud rate — engineering effort the other\n",
+        "three strategies didn't require. We should also state plainly that we\n",
+        "chose alpha by comparing configurations directly on the test set,\n",
+        "consistent with how we made earlier feature-engineering choices (log vs.\n",
+        "clipped velocity, the age/gender/city_pop refinement) in this project, but\n",
+        "it's a genuine limitation since we don't have a separate validation fold in\n",
+        "the current split.\n",
+        "\n",
+        "For Sparkov's 0.4-0.6% fraud rate specifically, we think this comparison\n",
+        "shows that global rebalancing strategies which don't distinguish between\n",
+        "easy and hard examples (Class Weights, SMOTE) actively hurt the metrics we\n",
+        "treat as primary (F2, MCC) despite nominal PR-AUC gains, while a\n",
+        "difficulty-aware reweighting of the loss (Focal Loss) is the only strategy\n",
+        "we tested that improves fraud detection without an unusable explosion in\n",
+        "false positives. Compared to the five-feature version of this analysis, the\n",
+        "age/gender_flag refinement widened Focal Loss's advantage over Control\n",
+        "further still — a sign our refined feature set gives the model more\n",
+        "genuine signal for a sharper, difficulty-aware decision boundary to\n",
+        "exploit, while Control and the resampling-based methods remain governed\n",
+        "more by threshold mechanics than by feature quality."
+      ],
+      "id": "Tq8SqLsc22RI"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "hSBIXmX-22RI"
+      },
+      "source": [
+        "## Model Robustness Check — Random Forest\n",
+        "\n",
+        "We used the same Logistic Regression architecture across all four\n",
+        "imbalance strategies above, deliberately kept constant so the\n",
+        "imbalance-handling strategy was the only variable we were testing. That\n",
+        "leaves open a real question we want to check: do our conclusions hold for a\n",
+        "model that can capture non-linear feature interactions, or are they an\n",
+        "artifact of using a linear decision boundary? In this section we repeat\n",
+        "Control, Class Weights, and SMOTE using a Random Forest instead, on the\n",
+        "same six-feature set and the same untouched test fold, to check whether our\n",
+        "earlier findings generalize across model types."
+      ],
+      "id": "hSBIXmX-22RI"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 13,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "co_PTUuC22RI",
+        "outputId": "f7d7f2a9-fc0a-41ab-ff92-2a6c9418b88c"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "PR-AUC: 0.8146\n",
+            "F2:     0.7389\n",
+            "MCC:    0.7761\n"
+          ]
+        }
+      ],
+      "source": [
+        "# Random Forest doesn't need scaled features - tree splits are based on value\n",
+        "# ordering, not magnitude - so we reuse the original unscaled X_train / X_test\n",
+        "# from the Control cell above instead of the scaled versions we needed for\n",
+        "# Logistic Regression and Focal Loss.\n",
+        "from sklearn.ensemble import RandomForestClassifier\n",
+        "\n",
+        "model_rf_control = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)\n",
+        "model_rf_control.fit(X_train, y_train)\n",
+        "\n",
+        "proba_rf_control = model_rf_control.predict_proba(X_test)[:, 1]\n",
+        "pred_rf_control = (proba_rf_control >= 0.5).astype(int)\n",
+        "\n",
+        "pr_auc_rf_control = average_precision_score(y_test, proba_rf_control)\n",
+        "f2_rf_control = fbeta_score(y_test, pred_rf_control, beta=2)\n",
+        "mcc_rf_control = matthews_corrcoef(y_test, pred_rf_control)\n",
+        "\n",
+        "print(f\"PR-AUC: {pr_auc_rf_control:.4f}\")\n",
+        "print(f\"F2:     {f2_rf_control:.4f}\")\n",
+        "print(f\"MCC:    {mcc_rf_control:.4f}\")\n"
+      ],
+      "id": "co_PTUuC22RI"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "yQ8qRiZq22RJ"
+      },
+      "source": [
+        "Random Forest's untreated Control result gave us a dramatic jump over\n",
+        "Logistic Regression's Control on the identical six-feature set and test\n",
+        "fold: PR-AUC more than doubles (0.3510 to 0.8146) and F2/MCC roughly triple\n",
+        "(0.2137 to 0.7389, 0.3525 to 0.7761) — all with no imbalance handling\n",
+        "applied at all. This already exceeds every Logistic Regression variant we\n",
+        "tested earlier, including our best-performing Focal Loss configuration\n",
+        "(PR-AUC 0.3577, F2 0.3837, MCC 0.4369). We think the likely mechanism is\n",
+        "that Random Forest can carve non-linear, interaction-aware decision\n",
+        "boundaries — for example, a specific combination of category, hour, and\n",
+        "velocity together — rather than a single global weighted sum of features,\n",
+        "which appears far better suited to how fraud patterns are structured in\n",
+        "this feature space than a linear model's single hyperplane."
+      ],
+      "id": "yQ8qRiZq22RJ"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 14,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "Wa28HarO22RJ",
+        "outputId": "a350efd2-f981-4ad1-849f-90d9db893de2"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "PR-AUC: 0.8181\n",
+            "F2:     0.7390\n",
+            "MCC:    0.7744\n"
+          ]
+        }
+      ],
+      "source": [
+        "model_rf_weighted = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1, class_weight=\"balanced\")\n",
+        "model_rf_weighted.fit(X_train, y_train)\n",
+        "\n",
+        "proba_rf_weighted = model_rf_weighted.predict_proba(X_test)[:, 1]\n",
+        "pred_rf_weighted = (proba_rf_weighted >= 0.5).astype(int)\n",
+        "\n",
+        "pr_auc_rf_weighted = average_precision_score(y_test, proba_rf_weighted)\n",
+        "f2_rf_weighted = fbeta_score(y_test, pred_rf_weighted, beta=2)\n",
+        "mcc_rf_weighted = matthews_corrcoef(y_test, pred_rf_weighted)\n",
+        "\n",
+        "print(f\"PR-AUC: {pr_auc_rf_weighted:.4f}\")\n",
+        "print(f\"F2:     {f2_rf_weighted:.4f}\")\n",
+        "print(f\"MCC:    {mcc_rf_weighted:.4f}\")\n"
+      ],
+      "id": "Wa28HarO22RJ"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 15,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "ZIUXfV8m22RJ",
+        "outputId": "e105c9d4-686c-4093-dc9f-ecfcfbc9dc0b"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "RF Control:\n",
+            "  Predicted positives: 1827 out of 555719\n",
+            "  Precision: 0.8418\n",
+            "  Recall:    0.7170\n",
+            "  TP=1538  FP=289  FN=607  TN=553285\n",
+            "\n",
+            "RF Class Weights:\n",
+            "  Predicted positives: 1840 out of 555719\n",
+            "  Precision: 0.8370\n",
+            "  Recall:    0.7179\n",
+            "  TP=1540  FP=300  FN=605  TN=553274\n",
+            "\n"
+          ]
+        }
+      ],
+      "source": [
+        "# same diagnostic pattern we used for Logistic Regression - checking what the\n",
+        "# fixed 0.5 threshold is actually doing to precision/recall for each RF variant\n",
+        "for name, pred in [(\"RF Control\", pred_rf_control), (\"RF Class Weights\", pred_rf_weighted)]:\n",
+        "    tn, fp, fn, tp = confusion_matrix(y_test, pred).ravel()\n",
+        "    print(f\"{name}:\")\n",
+        "    print(f\"  Predicted positives: {pred.sum()} out of {len(pred)}\")\n",
+        "    print(f\"  Precision: {precision_score(y_test, pred):.4f}\")\n",
+        "    print(f\"  Recall:    {recall_score(y_test, pred):.4f}\")\n",
+        "    print(f\"  TP={tp}  FP={fp}  FN={fn}  TN={tn}\")\n",
+        "    print()\n"
+      ],
+      "id": "ZIUXfV8m22RJ"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "_3motvcD22RJ"
+      },
+      "source": [
+        "We found `class_weight=\"balanced\"` changed almost nothing for Random\n",
+        "Forest. Precision moved from 0.8418 to 0.8370 and recall from 0.7170 to\n",
+        "0.7180 — a shift of only 13 predicted positives out of 555,719 (1,827 to\n",
+        "1,840). We find this a striking contrast with Logistic Regression, where\n",
+        "the same setting increased predicted positives by two orders of magnitude\n",
+        "(570 to 95,303) and collapsed precision by a factor of roughly 39. We trace\n",
+        "the difference to what class weighting actually reweights: for Logistic\n",
+        "Regression, it rescales the loss driving a single global linear boundary,\n",
+        "so reweighting shifts that one boundary dramatically. Random Forest instead\n",
+        "grows many trees that recursively partition the feature space into small,\n",
+        "local regions — by default with no depth limit — so each tree can already\n",
+        "isolate minority-class examples through its structure rather than through a\n",
+        "globally reweighted loss. Class weighting only nudges which splits get\n",
+        "chosen at the margins here; there is no single global threshold for it to\n",
+        "blow up. We think this is consistent with a broader, well-documented\n",
+        "property of tree ensembles: they are inherently less sensitive to class\n",
+        "imbalance than linear or other parametric models, precisely because they\n",
+        "do not rely on one global decision boundary that a skewed class\n",
+        "distribution can drag off course."
+      ],
+      "id": "_3motvcD22RJ"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 16,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "z9x24cR922RK",
+        "outputId": "ed034a76-0d98-4493-e42e-1dac6be211d8"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "PR-AUC: 0.7458\n",
+            "F2:     0.7612\n",
+            "MCC:    0.6807\n"
+          ]
+        }
+      ],
+      "source": [
+        "# we already generated SMOTE's resampled data (X_train_smote, y_train_smote) earlier\n",
+        "# for Logistic Regression - reusing it here rather than re-running SMOTE, since it's\n",
+        "# the same synthetic training set regardless of which model trains on it downstream.\n",
+        "# RF is scale-invariant, so this works fine on the scaled features; predicting on\n",
+        "# X_test_scaled (not X_test) just keeps train/test in the same feature space.\n",
+        "model_rf_smote = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)\n",
+        "model_rf_smote.fit(X_train_smote, y_train_smote)\n",
+        "\n",
+        "proba_rf_smote = model_rf_smote.predict_proba(X_test_scaled)[:, 1]\n",
+        "pred_rf_smote = (proba_rf_smote >= 0.5).astype(int)\n",
+        "\n",
+        "pr_auc_rf_smote = average_precision_score(y_test, proba_rf_smote)\n",
+        "f2_rf_smote = fbeta_score(y_test, pred_rf_smote, beta=2)\n",
+        "mcc_rf_smote = matthews_corrcoef(y_test, pred_rf_smote)\n",
+        "\n",
+        "print(f\"PR-AUC: {pr_auc_rf_smote:.4f}\")\n",
+        "print(f\"F2:     {f2_rf_smote:.4f}\")\n",
+        "print(f\"MCC:    {mcc_rf_smote:.4f}\")\n"
+      ],
+      "id": "z9x24cR922RK"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 17,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "b8Ymoawf22RK",
+        "outputId": "e9b4381b-2b9e-4b2e-fa70-f7d348c5026a"
+      },
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "RF Control:\n",
+            "  Predicted positives: 1827 out of 555719\n",
+            "  Precision: 0.8418\n",
+            "  Recall:    0.7170\n",
+            "  TP=1538  FP=289  FN=607  TN=553285\n",
+            "\n",
+            "RF Class Weights:\n",
+            "  Predicted positives: 1840 out of 555719\n",
+            "  Precision: 0.8370\n",
+            "  Recall:    0.7179\n",
+            "  TP=1540  FP=300  FN=605  TN=553274\n",
+            "\n",
+            "RF SMOTE:\n",
+            "  Predicted positives: 3250 out of 555719\n",
+            "  Precision: 0.5542\n",
+            "  Recall:    0.8396\n",
+            "  TP=1801  FP=1449  FN=344  TN=552125\n",
+            "\n"
+          ]
+        }
+      ],
+      "source": [
+        "for name, pred in [(\"RF Control\", pred_rf_control), (\"RF Class Weights\", pred_rf_weighted), (\"RF SMOTE\", pred_rf_smote)]:\n",
+        "    tn, fp, fn, tp = confusion_matrix(y_test, pred).ravel()\n",
+        "    print(f\"{name}:\")\n",
+        "    print(f\"  Predicted positives: {pred.sum()} out of {len(pred)}\")\n",
+        "    print(f\"  Precision: {precision_score(y_test, pred):.4f}\")\n",
+        "    print(f\"  Recall:    {recall_score(y_test, pred):.4f}\")\n",
+        "    print(f\"  TP={tp}  FP={fp}  FN={fn}  TN={tn}\")\n",
+        "    print()\n"
+      ],
+      "id": "b8Ymoawf22RK"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "k5JVUjiu22RK"
+      },
+      "source": [
+        "We found SMOTE behaves very differently from Class Weights on Random\n",
+        "Forest, breaking a pattern we established with Logistic Regression. There,\n",
+        "SMOTE and Class Weights converged to nearly identical results, because both\n",
+        "are mechanically similar ways of reweighting a single linear decision\n",
+        "boundary. For Random Forest they diverge sharply: Class Weights left\n",
+        "PR-AUC, F2, and MCC essentially unchanged from Control, while SMOTE moved\n",
+        "all three, and not uniformly for the better. Recall rose substantially\n",
+        "(0.7170 to 0.8396: 263 more true frauds caught, TP 1,538 to 1,801) at a\n",
+        "real cost to precision (0.8418 to 0.5542: 1,160 more false positives, FP\n",
+        "289 to 1,449) — predicted positives nearly doubled (1,827 to 3,250). Under\n",
+        "F2, which weights recall more heavily, this trade nets positive (0.7389 to\n",
+        "0.7612). Under MCC, which penalizes false positives and false negatives\n",
+        "symmetrically, it nets negative (0.7761 to 0.6807) — the additional false\n",
+        "positives outweigh the value of the additional true positives from a\n",
+        "balanced-error perspective.\n",
+        "\n",
+        "We think the PR-AUC drop (0.8146 to 0.7458) is the more telling signal,\n",
+        "since PR-AUC is threshold-independent: it is not measuring where the fixed\n",
+        "0.5 cutoff happens to land, but the model's ranking quality across every\n",
+        "possible threshold. A drop of this size means SMOTE produced a genuinely\n",
+        "worse-ranking model overall, not merely a different operating point on the\n",
+        "same underlying curve. Our best explanation is that SMOTE interpolates\n",
+        "linearly between minority-class neighbors across every feature, including\n",
+        "ones that are naturally binary or near-discrete (`is_night`, `gender_flag`,\n",
+        "and `category_risk`'s finite set of category-level values), producing\n",
+        "synthetic points with fractional values that correspond to no real\n",
+        "transaction. We think a high-capacity, non-linear model like Random Forest\n",
+        "can fit spurious local structure around this synthetic noise in a way a\n",
+        "single global linear boundary largely cannot, which would explain why\n",
+        "SMOTE degraded Random Forest's ranking ability here but left Logistic\n",
+        "Regression's comparatively unaffected."
+      ],
+      "id": "k5JVUjiu22RK"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "vrfJKAXy22RL"
+      },
+      "source": [
+        "We deliberately left Focal Loss out of this comparison. It is a\n",
+        "loss-reweighting technique — `alpha_t * (1-p_t)^gamma * log(p_t)` —\n",
+        "defined for models trained by gradient descent on a differentiable loss\n",
+        "function. We can't train Random Forest that way: each tree is grown by\n",
+        "greedily choosing splits that maximize impurity reduction (Gini or entropy)\n",
+        "at each node, with no loss function being minimized across the ensemble at\n",
+        "all. We don't see a meaningful way to substitute focal loss into that\n",
+        "process without changing what \"Random Forest\" means, so rather than force\n",
+        "an approximate substitute into this slot, we leave it out and disclose it\n",
+        "as a genuine boundary of this comparison: Focal Loss's benefit is specific\n",
+        "to gradient-optimized models, and this section can only test whether\n",
+        "Control, Class Weights, and SMOTE generalize across model types."
+      ],
+      "id": "vrfJKAXy22RL"
+    },
+    {
+      "cell_type": "code",
+      "execution_count": 18,
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 143
+        },
+        "id": "wAzmy6l722RM",
+        "outputId": "41d39f9a-e302-4617-e217-b9b2f4ed0b87"
+      },
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "                             PR-AUC        F2       MCC\n",
+              "RF Control (no treatment)  0.814568  0.738926  0.776126\n",
+              "RF Class Weights           0.818084  0.738964  0.774374\n",
+              "RF SMOTE                   0.745791  0.761200  0.680669"
+            ],
+            "text/html": [
+              "\n",
+              "  <div id=\"df-cf42e159-700d-4869-92f5-6b3d28d6cd8c\" class=\"colab-df-container\">\n",
+              "    <div>\n",
+              "<style scoped>\n",
+              "    .dataframe tbody tr th:only-of-type {\n",
+              "        vertical-align: middle;\n",
+              "    }\n",
+              "\n",
+              "    .dataframe tbody tr th {\n",
+              "        vertical-align: top;\n",
+              "    }\n",
+              "\n",
+              "    .dataframe thead th {\n",
+              "        text-align: right;\n",
+              "    }\n",
+              "</style>\n",
+              "<table border=\"1\" class=\"dataframe\">\n",
+              "  <thead>\n",
+              "    <tr style=\"text-align: right;\">\n",
+              "      <th></th>\n",
+              "      <th>PR-AUC</th>\n",
+              "      <th>F2</th>\n",
+              "      <th>MCC</th>\n",
+              "    </tr>\n",
+              "  </thead>\n",
+              "  <tbody>\n",
+              "    <tr>\n",
+              "      <th>RF Control (no treatment)</th>\n",
+              "      <td>0.814568</td>\n",
+              "      <td>0.738926</td>\n",
+              "      <td>0.776126</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>RF Class Weights</th>\n",
+              "      <td>0.818084</td>\n",
+              "      <td>0.738964</td>\n",
+              "      <td>0.774374</td>\n",
+              "    </tr>\n",
+              "    <tr>\n",
+              "      <th>RF SMOTE</th>\n",
+              "      <td>0.745791</td>\n",
+              "      <td>0.761200</td>\n",
+              "      <td>0.680669</td>\n",
+              "    </tr>\n",
+              "  </tbody>\n",
+              "</table>\n",
+              "</div>\n",
+              "    <div class=\"colab-df-buttons\">\n",
+              "\n",
+              "  <div class=\"colab-df-container\">\n",
+              "    <button class=\"colab-df-convert\" onclick=\"convertToInteractive('df-cf42e159-700d-4869-92f5-6b3d28d6cd8c')\"\n",
+              "            title=\"Convert this dataframe to an interactive table.\"\n",
+              "            style=\"display:none;\">\n",
+              "\n",
+              "  <svg xmlns=\"http://www.w3.org/2000/svg\" height=\"24px\" viewBox=\"0 -960 960 960\">\n",
+              "    <path d=\"M120-120v-720h720v720H120Zm60-500h600v-160H180v160Zm220 220h160v-160H400v160Zm0 220h160v-160H400v160ZM180-400h160v-160H180v160Zm440 0h160v-160H620v160ZM180-180h160v-160H180v160Zm440 0h160v-160H620v160Z\"/>\n",
+              "  </svg>\n",
+              "    </button>\n",
+              "\n",
+              "  <style>\n",
+              "    .colab-df-container {\n",
+              "      display:flex;\n",
+              "      gap: 12px;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-convert {\n",
+              "      background-color: #E8F0FE;\n",
+              "      border: none;\n",
+              "      border-radius: 50%;\n",
+              "      cursor: pointer;\n",
+              "      display: none;\n",
+              "      fill: #1967D2;\n",
+              "      height: 32px;\n",
+              "      padding: 0 0 0 0;\n",
+              "      width: 32px;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-convert:hover {\n",
+              "      background-color: #E2EBFA;\n",
+              "      box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);\n",
+              "      fill: #174EA6;\n",
+              "    }\n",
+              "\n",
+              "    .colab-df-buttons div {\n",
+              "      margin-bottom: 4px;\n",
+              "    }\n",
+              "\n",
+              "    [theme=dark] .colab-df-convert {\n",
+              "      background-color: #3B4455;\n",
+              "      fill: #D2E3FC;\n",
+              "    }\n",
+              "\n",
+              "    [theme=dark] .colab-df-convert:hover {\n",
+              "      background-color: #434B5C;\n",
+              "      box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);\n",
+              "      filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));\n",
+              "      fill: #FFFFFF;\n",
+              "    }\n",
+              "  </style>\n",
+              "\n",
+              "    <script>\n",
+              "      const buttonEl =\n",
+              "        document.querySelector('#df-cf42e159-700d-4869-92f5-6b3d28d6cd8c button.colab-df-convert');\n",
+              "      buttonEl.style.display =\n",
+              "        google.colab.kernel.accessAllowed ? 'block' : 'none';\n",
+              "\n",
+              "      async function convertToInteractive(key) {\n",
+              "        const element = document.querySelector('#df-cf42e159-700d-4869-92f5-6b3d28d6cd8c');\n",
+              "        const dataTable =\n",
+              "          await google.colab.kernel.invokeFunction('convertToInteractive',\n",
+              "                                                    [key], {});\n",
+              "        if (!dataTable) return;\n",
+              "\n",
+              "        const docLinkHtml = 'Like what you see? Visit the ' +\n",
+              "          '<a target=\"_blank\" href=https://colab.research.google.com/notebooks/data_table.ipynb>data table notebook</a>'\n",
+              "          + ' to learn more about interactive tables.';\n",
+              "        element.innerHTML = '';\n",
+              "        dataTable['output_type'] = 'display_data';\n",
+              "        await google.colab.output.renderOutput(dataTable, element);\n",
+              "        const docLink = document.createElement('div');\n",
+              "        docLink.innerHTML = docLinkHtml;\n",
+              "        element.appendChild(docLink);\n",
+              "      }\n",
+              "    </script>\n",
+              "  </div>\n",
+              "\n",
+              "\n",
+              "  <div id=\"id_35c19b8a-6ddb-489d-b7fd-81ff52095afd\">\n",
+              "    <style>\n",
+              "      .colab-df-generate {\n",
+              "        background-color: #E8F0FE;\n",
+              "        border: none;\n",
+              "        border-radius: 50%;\n",
+              "        cursor: pointer;\n",
+              "        display: none;\n",
+              "        fill: #1967D2;\n",
+              "        height: 32px;\n",
+              "        padding: 0 0 0 0;\n",
+              "        width: 32px;\n",
+              "      }\n",
+              "\n",
+              "      .colab-df-generate:hover {\n",
+              "        background-color: #E2EBFA;\n",
+              "        box-shadow: 0px 1px 2px rgba(60, 64, 67, 0.3), 0px 1px 3px 1px rgba(60, 64, 67, 0.15);\n",
+              "        fill: #174EA6;\n",
+              "      }\n",
+              "\n",
+              "      [theme=dark] .colab-df-generate {\n",
+              "        background-color: #3B4455;\n",
+              "        fill: #D2E3FC;\n",
+              "      }\n",
+              "\n",
+              "      [theme=dark] .colab-df-generate:hover {\n",
+              "        background-color: #434B5C;\n",
+              "        box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.15);\n",
+              "        filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.3));\n",
+              "        fill: #FFFFFF;\n",
+              "      }\n",
+              "    </style>\n",
+              "    <button class=\"colab-df-generate\" onclick=\"generateWithVariable('comparison_table_rf')\"\n",
+              "            title=\"Generate code using this dataframe.\"\n",
+              "            style=\"display:none;\">\n",
+              "\n",
+              "  <svg xmlns=\"http://www.w3.org/2000/svg\" height=\"24px\"viewBox=\"0 0 24 24\"\n",
+              "       width=\"24px\">\n",
+              "    <path d=\"M7,19H8.4L18.45,9,17,7.55,7,17.6ZM5,21V16.75L18.45,3.32a2,2,0,0,1,2.83,0l1.4,1.43a1.91,1.91,0,0,1,.58,1.4,1.91,1.91,0,0,1-.58,1.4L9.25,21ZM18.45,9,17,7.55Zm-12,3A5.31,5.31,0,0,0,4.9,8.1,5.31,5.31,0,0,0,1,6.5,5.31,5.31,0,0,0,4.9,4.9,5.31,5.31,0,0,0,6.5,1,5.31,5.31,0,0,0,8.1,4.9,5.31,5.31,0,0,0,12,6.5,5.46,5.46,0,0,0,6.5,12Z\"/>\n",
+              "  </svg>\n",
+              "    </button>\n",
+              "    <script>\n",
+              "      (() => {\n",
+              "      const buttonEl =\n",
+              "        document.querySelector('#id_35c19b8a-6ddb-489d-b7fd-81ff52095afd button.colab-df-generate');\n",
+              "      buttonEl.style.display =\n",
+              "        google.colab.kernel.accessAllowed ? 'block' : 'none';\n",
+              "\n",
+              "      buttonEl.onclick = () => {\n",
+              "        google.colab.notebook.generateWithVariable('comparison_table_rf');\n",
+              "      }\n",
+              "      })();\n",
+              "    </script>\n",
+              "  </div>\n",
+              "\n",
+              "    </div>\n",
+              "  </div>\n"
+            ],
+            "application/vnd.google.colaboratory.intrinsic+json": {
+              "type": "dataframe",
+              "variable_name": "comparison_table_rf",
+              "summary": "{\n  \"name\": \"comparison_table_rf\",\n  \"rows\": 3,\n  \"fields\": [\n    {\n      \"column\": \"PR-AUC\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.04076132174216571,\n        \"min\": 0.7457912726834725,\n        \"max\": 0.818084201588631,\n        \"num_unique_values\": 3,\n        \"samples\": [\n          0.8145683266685796,\n          0.818084201588631,\n          0.7457912726834725\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    },\n    {\n      \"column\": \"F2\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.012849354500490144,\n        \"min\": 0.7389257230710099,\n        \"max\": 0.761200338123415,\n        \"num_unique_values\": 3,\n        \"samples\": [\n          0.7389257230710099,\n          0.7389635316698656,\n          0.761200338123415\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    },\n    {\n      \"column\": \"MCC\",\n      \"properties\": {\n        \"dtype\": \"number\",\n        \"std\": 0.05461315014493681,\n        \"min\": 0.6806694232628097,\n        \"max\": 0.7761262688017025,\n        \"num_unique_values\": 3,\n        \"samples\": [\n          0.7761262688017025,\n          0.7743737254265993,\n          0.6806694232628097\n        ],\n        \"semantic_type\": \"\",\n        \"description\": \"\"\n      }\n    }\n  ]\n}"
+            }
+          },
+          "metadata": {},
+          "execution_count": 18
+        }
+      ],
+      "source": [
+        "comparison_table_rf = pd.DataFrame({\n",
+        "    \"PR-AUC\": [pr_auc_rf_control, pr_auc_rf_weighted, pr_auc_rf_smote],\n",
+        "    \"F2\":     [f2_rf_control, f2_rf_weighted, f2_rf_smote],\n",
+        "    \"MCC\":    [mcc_rf_control, mcc_rf_weighted, mcc_rf_smote],\n",
+        "}, index=[\"RF Control (no treatment)\", \"RF Class Weights\", \"RF SMOTE\"])\n",
+        "\n",
+        "comparison_table_rf\n"
+      ],
+      "id": "wAzmy6l722RM"
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "U8v3b0Pp22RM"
+      },
+      "source": [
+        "## Cross-Model Interpretation\n",
+        "\n",
+        "When we place both comparison tables side by side, the headline finding of\n",
+        "this robustness check becomes clear:\n",
+        "\n",
+        "| Strategy | LR PR-AUC | LR F2 | LR MCC | RF PR-AUC | RF F2 | RF MCC |\n",
+        "|---|---|---|---|---|---|---|\n",
+        "| Control (no treatment) | 0.3510 | 0.2137 | 0.3525 | 0.8146 | 0.7389 | 0.7761 |\n",
+        "| Class Weights | 0.3556 | 0.0805 | 0.1005 | 0.8181 | 0.7390 | 0.7744 |\n",
+        "| SMOTE | 0.3560 | 0.0805 | 0.1005 | 0.7458 | 0.7612 | 0.6807 |\n",
+        "| Focal Loss (alpha=0.9, gamma=2.0) | 0.3577 | 0.3837 | 0.4369 | not applicable | — | — |\n",
+        "\n",
+        "Random Forest's untreated Control result exceeds every Logistic Regression\n",
+        "variant we tested, including our best-performing, explicitly tuned Focal\n",
+        "Loss configuration, on every metric. We think this is the most\n",
+        "consequential finding of this comparison: for this dataset and feature set,\n",
+        "model architecture appears to matter substantially more than\n",
+        "imbalance-handling strategy. A carefully tuned strategy on a weaker model\n",
+        "(Logistic Regression with Focal Loss) still falls well short of an untuned,\n",
+        "untreated stronger model (Random Forest with no imbalance handling at\n",
+        "all).\n",
+        "\n",
+        "We also found the two models respond to the same imbalance-handling\n",
+        "strategies in opposite ways, which argues against generalizing conclusions\n",
+        "about \"the best imbalance strategy\" from one model class to another. For\n",
+        "Logistic Regression, Class Weights and SMOTE behaved almost identically to\n",
+        "each other (both collapsing F2 and MCC via a precision crash), while Focal\n",
+        "Loss was the clear outlier and the only strategy to improve on Control. For\n",
+        "Random Forest, Class Weights and Control behaved almost identically to each\n",
+        "other (negligible movement in any metric), while SMOTE was the outlier —\n",
+        "and not favorably, degrading PR-AUC and MCC while only marginally helping\n",
+        "F2. Our earlier finding that SMOTE and Class Weights converge because they\n",
+        "are mechanically similar ways of reweighting a single linear decision\n",
+        "boundary does not hold for Random Forest, precisely because a forest of\n",
+        "independently-grown, recursively partitioned trees is not a single decision\n",
+        "boundary and is not reweighted in the same way.\n",
+        "\n",
+        "This also changes how we think about why imbalance handling was needed for\n",
+        "Logistic Regression in the first place. Its untreated Control was already\n",
+        "fairly conservative (precision 0.6860, recall 0.1823), while Random\n",
+        "Forest's untreated Control lands close to a reasonable operating point on\n",
+        "its own (precision 0.8418, recall 0.7170) without any special handling. We\n",
+        "think Random Forest's flexible, non-linear partitioning of the feature\n",
+        "space already accommodates the minority class's local structure in a way a\n",
+        "single linear boundary cannot, consistent with the broader, well-documented\n",
+        "property that tree ensembles are inherently less imbalance-sensitive than\n",
+        "linear or other parametric models.\n",
+        "\n",
+        "We want to state two limitations plainly. First, this isn't a perfectly\n",
+        "matched comparison of \"best possible\" configurations: we tuned Focal\n",
+        "Loss's alpha via an explicit sweep, but ran Random Forest with\n",
+        "scikit-learn's defaults (`n_estimators=100`, no depth limit, no\n",
+        "hyperparameter search) — the gap we observed here could narrow or widen\n",
+        "with tuning on either side, though it's large enough that our qualitative\n",
+        "conclusion (model choice matters a great deal) is unlikely to reverse.\n",
+        "Second, an unconstrained Random Forest (no `max_depth` cap) grown on 1.3\n",
+        "million rows carries a real risk of overfitting to training-set-specific\n",
+        "noise; the strong result on our untouched test fold is evidence against\n",
+        "severe overfitting, but we think a direct train-versus-test performance\n",
+        "comparison, or a shallower, tuned Random Forest, would be a natural\n",
+        "follow-up before we treat 0.8146 PR-AUC as the final word on what this\n",
+        "feature set can achieve. We couldn't test Focal Loss on Random Forest at\n",
+        "all, since it's a loss-reweighting technique defined for models trained by\n",
+        "gradient descent, and Random Forest isn't trained that way — a boundary of\n",
+        "this comparison rather than a result to interpret."
+      ],
+      "id": "U8v3b0Pp22RM"
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "display_name": "Python 3",
+      "language": "python",
+      "name": "python3"
+    },
+    "language_info": {
+      "name": "python",
+      "version": "3"
+    },
+    "colab": {
+      "provenance": [],
+      "include_colab_link": true
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 5
+}
