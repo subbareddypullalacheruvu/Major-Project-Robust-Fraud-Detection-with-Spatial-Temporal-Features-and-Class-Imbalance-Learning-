@@ -1,0 +1,19 @@
+vs,Metric,mean diff,CI low,CI high,P(A > B)
+CatBoost Tuned,PR-AUC,0.0148,0.0085,0.0222,1.0
+CatBoost Tuned,F2,0.0157,0.0085,0.0227,1.0
+CatBoost Tuned,MCC,0.0305,0.0222,0.0381,1.0
+Random Forest Control,PR-AUC,0.0203,0.0167,0.0239,1.0
+Random Forest Control,F2,0.0094,0.0049,0.0134,1.0
+Random Forest Control,MCC,0.0058,0.0015,0.0099,0.994
+CatBoost Control,PR-AUC,0.0359,0.0275,0.0455,1.0
+CatBoost Control,F2,0.0335,0.0238,0.0434,1.0
+CatBoost Control,MCC,0.0449,0.0355,0.0541,1.0
+XGBoost Weighted,PR-AUC,0.0401,0.0313,0.0505,1.0
+XGBoost Weighted,F2,0.0356,0.0259,0.0456,1.0
+XGBoost Weighted,MCC,0.0497,0.0396,0.0598,1.0
+CatBoost Weighted,PR-AUC,0.0592,0.0488,0.0712,1.0
+CatBoost Weighted,F2,0.0481,0.038,0.0573,1.0
+CatBoost Weighted,MCC,0.0676,0.0572,0.0769,1.0
+Balanced RF,PR-AUC,0.1075,0.0928,0.1226,1.0
+Balanced RF,F2,0.0294,0.0206,0.0375,1.0
+Balanced RF,MCC,0.045,0.0363,0.053,1.0
