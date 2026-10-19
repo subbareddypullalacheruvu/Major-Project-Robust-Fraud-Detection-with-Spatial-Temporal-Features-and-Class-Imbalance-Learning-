@@ -1,0 +1,10 @@
+Comparison,Metric,mean diff,CI low,CI high,P(first > second)
+"Six, out-of-fold minus Reference",PR-AUC,-0.0265,-0.0318,-0.0216,0.0
+"Six, out-of-fold minus Reference",F2,-0.026,-0.0321,-0.02,0.0
+"Six, out-of-fold minus Reference",MCC,-0.0227,-0.0286,-0.017,0.0
+"No gender minus Six, out-of-fold",PR-AUC,-0.0079,-0.0121,-0.0038,0.0
+"No gender minus Six, out-of-fold",F2,-0.018,-0.0228,-0.0134,0.0
+"No gender minus Six, out-of-fold",MCC,-0.0325,-0.0374,-0.0279,0.0
+"No gender, no age minus Six, out-of-fold",PR-AUC,-0.0197,-0.0272,-0.0119,0.0
+"No gender, no age minus Six, out-of-fold",F2,-0.019,-0.0256,-0.0122,0.0
+"No gender, no age minus Six, out-of-fold",MCC,-0.0193,-0.0259,-0.0124,0.0
