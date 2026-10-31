@@ -1,0 +1,7 @@
+feature,PR-AUC,lift,ROC-AUC
+category_risk,0.0108,13.29,0.7952
+age,0.0011,1.37,0.5872
+amt_log,0.0019,2.32,0.5558
+is_night,0.0009,1.08,0.5386
+gap_log,0.0008,1.01,0.5257
+gender_flag,0.0008,1.0,0.5001

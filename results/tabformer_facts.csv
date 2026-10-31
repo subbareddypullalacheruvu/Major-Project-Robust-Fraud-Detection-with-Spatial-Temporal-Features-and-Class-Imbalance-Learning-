@@ -1,0 +1,16 @@
+,0
+rows,1841549
+fraud rows,2182
+fraud rate %,0.1185
+start,2015-01-01 00:01:00
+end,2020-02-28 23:49:00
+users,396
+cards,1107
+median txns per card,1161.0
+cards with any fraud,317
+"median gap h, fraud",2.51
+"median gap h, normal",9.3
+mean frauds per card-day,2.17
+frauds in card-days with 2+ frauds %,81.2
+fraud at night (22-03) %,0.1
+normal at night (22-03) %,7.7
