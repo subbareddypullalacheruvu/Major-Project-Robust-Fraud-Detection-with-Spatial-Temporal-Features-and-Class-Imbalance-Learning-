@@ -1,0 +1,8 @@
+{
+  "stage": "Stage 5 - naive baseline",
+  "dataset": "ULB",
+  "model": "Logistic Regression (default params, scaled features, no resampling/weighting)",
+  "pr_auc": 0.730575986503675,
+  "f2": 0.6011730205278593,
+  "mcc": 0.7102239636727024
+}

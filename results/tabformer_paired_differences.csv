@@ -1,0 +1,17 @@
+Comparison,Metric,mean diff,CI low,CI high,P(first > second)
+Our six features minus Without gap_log,PR-AUC,-0.0105,-0.0215,-0.0014,0.016
+Our six features minus Without gap_log,F1,-0.0048,-0.0123,0.0034,0.132
+Our six features minus Without gap_log,F2,-0.0072,-0.0202,0.0071,0.166
+Our six features minus Without gap_log,MCC,-0.0055,-0.0162,0.0063,0.176
+Every raw column minus Our six features,PR-AUC,0.8732,0.8341,0.9085,1.0
+Every raw column minus Our six features,F1,0.7338,0.6864,0.7773,1.0
+Every raw column minus Our six features,F2,0.7707,0.729,0.8105,1.0
+Every raw column minus Our six features,MCC,0.7259,0.6799,0.769,1.0
+Our six + location minus Our six features,PR-AUC,0.3287,0.269,0.382,1.0
+Our six + location minus Our six features,F1,0.2561,0.2193,0.2952,1.0
+Our six + location minus Our six features,F2,0.3432,0.3045,0.3832,1.0
+Our six + location minus Our six features,MCC,0.2805,0.2457,0.317,1.0
+Every raw column minus Every raw column without Merchant State,PR-AUC,0.8891,0.8531,0.9237,1.0
+Every raw column minus Every raw column without Merchant State,F1,0.7567,0.7078,0.8027,1.0
+Every raw column minus Every raw column without Merchant State,F2,0.8109,0.77,0.8495,1.0
+Every raw column minus Every raw column without Merchant State,MCC,0.759,0.7116,0.8026,1.0

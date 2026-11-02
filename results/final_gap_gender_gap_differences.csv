@@ -1,0 +1,4 @@
+Comparison,mean diff,CI low,CI high
+Final model (time gap) minus Velocity model,0.01,-0.003,0.0226
+No gender minus Final model (time gap),0.0145,0.0065,0.0238
+"No gender, no age minus Final model (time gap)",-0.0014,-0.0156,0.0155

@@ -1,0 +1,20 @@
+column,used as,PR-AUC,lift,ROC-AUC,note
+Merchant State,fraud rate of each value,0.7843,963.28,0.9999,check for leakage
+MCC,fraud rate of each value,0.0108,13.29,0.7952,some signal
+City,fraud rate of each value,0.003,3.7,0.6266,some signal
+Current Age,numeric,0.0012,1.46,0.5878,some signal
+Birth Year,numeric,0.0012,1.45,0.5877,some signal
+State,fraud rate of each value,0.0014,1.66,0.5592,some signal
+amount,numeric,0.0019,2.32,0.5559,some signal
+Num Credit Cards,numeric,0.001,1.27,0.5289,little or no signal
+Total Debt,numeric,0.0009,1.16,0.527,little or no signal
+Retirement Age,numeric,0.0008,1.04,0.52,little or no signal
+Latitude,numeric,0.0011,1.36,0.5093,little or no signal
+Errors?,fraud rate of each value,0.0009,1.06,0.5035,little or no signal
+FICO Score,numeric,0.0009,1.05,0.503,little or no signal
+Gender,fraud rate of each value,0.0008,1.0,0.5001,little or no signal
+Longitude,numeric,0.0014,1.66,0.4932,little or no signal
+Yearly Income - Person,numeric,0.0012,1.44,0.4641,little or no signal
+Per Capita Income - Zipcode,numeric,0.0009,1.16,0.4398,little or no signal
+Use Chip,fraud rate of each value,0.0008,1.0,0.3554,little or no signal
+Merchant City,skipped (too many text values),,,,
