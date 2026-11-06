@@ -140,8 +140,122 @@ def run_seeds(name, make_model, X_tr, y_tr, X_val, y_val, X_test, seeds,
 # 4. Day-block bootstrap
 # ---------------------------------------------------------------------------
 
-def bootstrap_model(y_test, runs, days, n_boot=500, boot_seed=0):
+def _sorted_for_pr_auc(proba):
+    """Sort one seed's test scores once, from the highest to the lowest, in the same
+    way as scikit-learn, and mark the last row of each group of tied scores."""
+    proba = np.asarray(proba)
+    order = np.argsort(proba, kind="mergesort")[::-1]
+    sorted_scores = proba[order]
+    group_ends = np.r_[np.where(np.diff(sorted_scores))[0], len(sorted_scores) - 1]
+    return order, group_ends
+
+
+def _weighted_pr_auc(times_drawn, day_sorted, pos_day, pos_before_end, group_ends):
+    """Weighted average precision from rows that are already sorted by score.
+    This follows scikit-learn's average_precision_score step by step: rows with
+    zero weight are ignored, tied scores form one point, and the area is the
+    step-function integral of precision over recall.
+
+    Every weight is a whole number (how many times a day was drawn), so the
+    running counts of true and false positives are whole numbers too, and adding
+    them up in a different order gives exactly the same totals. We therefore add
+    up the weights of the fraud rows only (a few thousand) for the true positives,
+    and take the false positives as all weight minus the true positives."""
+    w_end = np.cumsum(times_drawn[day_sorted])[group_ends]
+    tps = np.r_[0.0, np.cumsum(times_drawn[pos_day])][pos_before_end]
+    fps = w_end - tps
+    # a group whose rows were all drawn zero times is not a point on the curve
+    keep = np.diff(np.r_[0.0, w_end]) > 0
+    tps, fps = tps[keep], fps[keep]
+    if len(tps) == 0 or tps[-1] == 0:
+        return 0.0
+    precision = tps / (tps + fps)
+    recall = tps / tps[-1]
+    precision = np.r_[precision[::-1], 1.0]
+    recall = np.r_[recall[::-1], 0.0]
+    return float(max(0.0, -np.sum(np.diff(recall) * precision[:-1])))
+
+
+def bootstrap_model(y_test, runs, days, n_boot=500, boot_seed=0, n_check=3):
     """Resample whole test days n_boot times and score the model on each resample.
+
+    runs is a list of (test_proba, threshold), one pair per seed. On each
+    resample we score every seed and average them, because the number we
+    report is the average over seeds.
+
+    Instead of copying rows, we give each row a weight equal to how many
+    times its day was drawn. A day drawn twice counts twice; a day not drawn
+    counts zero times.
+
+    We use the same boot_seed for every model, so all models are scored on
+    the same resampled days and can be compared fairly.
+
+    This gives the same resampled days and the same numbers as
+    bootstrap_model_reference, but faster: each seed's scores are sorted once
+    instead of once per resample, and the threshold counts (for F1, F2, MCC,
+    precision and recall) are added up per day once. On the first n_check
+    resamples we also score with point_metrics and stop if any number differs.
+    """
+    y_test = np.asarray(y_test)
+    days = pd.Series(days).reset_index(drop=True)
+    unique_days = days.unique()
+    day_index = pd.Index(unique_days)
+    day_of_row = day_index.get_indexer(days)
+    n_days = len(unique_days)
+    rng = np.random.default_rng(boot_seed)
+
+    prepared = []
+    positive = y_test == 1
+    for proba, t in runs:
+        order, group_ends = _sorted_for_pr_auc(proba)
+        pred = np.asarray(proba) >= t
+        # weighted counts per day; a resample's count is the sum over days of count x times drawn
+        per_day = {name: np.bincount(day_of_row, weights=mask.astype(float), minlength=n_days)
+                   for name, mask in [("tp", pred & positive), ("fp", pred & ~positive),
+                                      ("fn", ~pred & positive), ("tn", ~pred & ~positive)]}
+        y_sorted, day_sorted = y_test[order], day_of_row[order]
+        pos_rows = np.where(y_sorted == 1)[0]
+        # how many fraud rows sit at or above the end of each group of tied scores
+        pos_before_end = np.searchsorted(pos_rows, group_ends, side="right")
+        prepared.append((group_ends, day_sorted, day_sorted[pos_rows], pos_before_end, per_day))
+
+    rows = []
+    for b in range(n_boot):
+        # draw as many days as the test period has, with replacement
+        drawn = rng.choice(unique_days, size=len(unique_days), replace=True)
+        times_drawn = np.bincount(day_index.get_indexer(drawn), minlength=n_days).astype(float)
+
+        seed_scores = []
+        for group_ends, day_sorted, pos_day, pos_before_end, per_day in prepared:
+            tp, fp, fn, tn = (float(per_day[k] @ times_drawn) for k in ("tp", "fp", "fn", "tn"))
+            precision = tp / (tp + fp) if tp + fp > 0 else 0.0
+            recall = tp / (tp + fn) if tp + fn > 0 else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0.0
+            f2 = 5 * precision * recall / (4 * precision + recall) if precision + recall > 0 else 0.0
+            mcc_denominator = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+            mcc = (tp * tn - fp * fn) / mcc_denominator if mcc_denominator > 0 else 0.0
+            pr_auc = _weighted_pr_auc(times_drawn, day_sorted, pos_day, pos_before_end, group_ends)
+            seed_scores.append({"PR-AUC": pr_auc, "F1": f1, "F2": f2, "MCC": mcc,
+                                "Precision": precision, "Recall": recall})
+
+        if b < n_check:
+            # the same resample scored the original way, to confirm the numbers match
+            weights = days.map(pd.Series(drawn).value_counts()).fillna(0).values
+            for (proba, t), fast in zip(runs, seed_scores):
+                slow = point_metrics(y_test, proba, t, weights)
+                for m in fast:
+                    if not np.isclose(fast[m], slow[m], rtol=0, atol=1e-10):
+                        raise RuntimeError(f"fast bootstrap differs from point_metrics on {m}: "
+                                           f"{fast[m]!r} vs {slow[m]!r}")
+        rows.append(pd.DataFrame(seed_scores).mean().to_dict())
+    return pd.DataFrame(rows)
+
+
+def bootstrap_model_reference(y_test, runs, days, n_boot=500, boot_seed=0):
+    """The original (slower) day-block bootstrap. bootstrap_model gives the same
+    numbers faster; we keep this version to check that against.
+
+    Resample whole test days n_boot times and score the model on each resample.
 
     runs is a list of (test_proba, threshold), one pair per seed. On each
     resample we score every seed and average them, because the number we
