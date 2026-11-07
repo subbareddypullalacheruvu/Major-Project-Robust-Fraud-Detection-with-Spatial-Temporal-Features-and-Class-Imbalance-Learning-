@@ -10,6 +10,7 @@ This folder runs on its own. It does not depend on the experiment code in `src/`
 |---|---|
 | `fraud_app.py` | The Streamlit app (five tabs) |
 | `prototype.py` | Helper functions: column mapping, features, time split, training, scoring, reasons |
+| `ui.py` | The look of the app: colours, fonts, page styles and the interactive charts |
 | `prototype_demo.ipynb` | Colab notebook: makes the demo files and starts the app |
 | `requirements.txt` | Packages the app needs |
 | `demo_data/` | Demo files made by the notebook (not on GitHub, too large) |
@@ -36,6 +37,15 @@ The app builds only the features that the table's columns allow.
 3. **Train and evaluate:** split by time (train, validation, test), fit `category_risk` on the training part, train a Random Forest with our settings, choose the F2 threshold on validation, and show PR-AUC, F2, MCC, the precision-recall curve, feature importance, alert budgets and a leakage check on the test part.
 4. **Alerts:** the riskiest test transactions with short reasons, downloadable as CSV.
 5. **Score new data:** score a new CSV with the trained model; save or load a model.
+
+## What you can do in the app
+
+- **Review budget:** drag a slider to choose what share of transactions analysts review, and see how many frauds and fraud dollars that catches, with a capture curve against random review.
+- **Alert threshold:** move the threshold and watch fraud caught, missed and false alarms change, with your point on the precision-recall curve. You can make the new threshold the one used for alerts and scoring.
+- **Time split:** see the train, validation and test periods on a timeline.
+- **Alert queue:** click any alert to open its card: the fraud score, the reasons, and the card's transactions two weeks either side.
+
+The colours and fonts come from `ui.py`, plus `.streamlit/config.toml` in the repository folder, which Streamlit reads when you start the app from there.
 
 ## Running it
 
