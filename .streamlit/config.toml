@@ -1,0 +1,19 @@
+# FraudLens look. Streamlit reads this when you run the app from the repository folder:
+#   streamlit run app/fraud_app.py
+[theme]
+base = "light"
+primaryColor = "#3D44C9"
+backgroundColor = "#F4F5F9"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#161B33"
+borderColor = "#DCE0EA"
+baseRadius = "10px"
+
+[theme.sidebar]
+backgroundColor = "#161B33"
+secondaryBackgroundColor = "#232A4D"
+textColor = "#E8EAF4"
+primaryColor = "#8F95E3"
+
+[server]
+maxUploadSize = 1000
